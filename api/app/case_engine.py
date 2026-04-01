@@ -396,7 +396,7 @@ def build_cases():
                 """
                 SELECT id, case_id, author, content, created_at
                 FROM analyst_note
-                WHERE case_id = ANY(%s)
+                WHERE case_id = ANY(%s::uuid[])
                 ORDER BY created_at ASC, id ASC
                 """,
                 (existing_case_ids,),
@@ -415,7 +415,7 @@ def build_cases():
             }
 
         if existing_case_ids:
-            cur.execute("DELETE FROM analyst_note WHERE case_id = ANY(%s)", (existing_case_ids,))
+            cur.execute("DELETE FROM analyst_note WHERE case_id = ANY(%s::uuid[])", (existing_case_ids,))
         cur.execute("DELETE FROM case_evidence")
         cur.execute("DELETE FROM investigation_case")
         conn.commit()
