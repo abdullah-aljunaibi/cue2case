@@ -16,7 +16,7 @@ DATABASE_URL = os.environ.get(
     "postgresql://cue2case:cue2case_dev@localhost:5433/cue2case",
 )
 
-# Long Beach approach corridor (approximate center line)
+# Long Beach port approach area (approximate bounds)
 # Main channel runs roughly NW-SE at heading ~310-330 inbound
 APPROACH_BBOX = {
     "min_lat": 33.68,
