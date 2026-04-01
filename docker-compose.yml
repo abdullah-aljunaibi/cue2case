@@ -1,0 +1,41 @@
+version: '3.8'
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: cue2case
+      POSTGRES_USER: cue2case
+      POSTGRES_PASSWORD: cue2case_dev
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d
+
+  api:
+    build: ./api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://cue2case:cue2case_dev@db:5432/cue2case
+    depends_on:
+      - db
+    volumes:
+      - ./api:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  web:
+    build: ./web
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    depends_on:
+      - api
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+      - /app/.next
+
+volumes:
+  pgdata:
