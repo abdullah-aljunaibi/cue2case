@@ -5,3 +5,6 @@ __pycache__/
 .next/
 node_modules/
 .venv/
+web/.gitignore
+web/next-env.d.ts
+web/.vercel
