@@ -124,20 +124,42 @@ export default async function Page() {
           <p style={{ margin: '0 0 0.75rem', color: '#475569', fontSize: '1rem' }}>
             Case-first maritime anomaly triage
           </p>
-          <Link
-            href="/map"
+          <div
             style={{
-              display: 'inline-flex',
+              display: 'flex',
               alignItems: 'center',
+              gap: '1rem',
+              flexWrap: 'wrap',
               marginBottom: '0.75rem',
-              color: '#1d4ed8',
-              fontSize: '0.95rem',
-              fontWeight: 700,
-              textDecoration: 'none',
             }}
           >
-            Open map view →
-          </Link>
+            <Link
+              href="/map"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                color: '#1d4ed8',
+                fontSize: '0.95rem',
+                fontWeight: 700,
+                textDecoration: 'none',
+              }}
+            >
+              Open map view →
+            </Link>
+            <Link
+              href="/external-cues"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                color: '#1d4ed8',
+                fontSize: '0.95rem',
+                fontWeight: 700,
+                textDecoration: 'none',
+              }}
+            >
+              External cues →
+            </Link>
+          </div>
           <div style={{ fontSize: '0.875rem', color: '#64748b' }}>
             API URL: {apiUrl} · Case count: {totalCases}
           </div>
