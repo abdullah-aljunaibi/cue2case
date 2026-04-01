@@ -1,4 +1,6 @@
 // Server-rendered Cue2Case landing page that fetches and displays the ranked case queue.
+import Link from 'next/link';
+
 const apiUrl =
   process.env.INTERNAL_API_URL ||
   process.env.NEXT_PUBLIC_API_URL ||
@@ -100,8 +102,7 @@ export default async function Page() {
   return (
     <main
       style={{
-        fontFamily:
-          'Arial, sans-serif',
+        fontFamily: 'Arial, sans-serif',
         backgroundColor: '#f3f6fb',
         color: '#0f172a',
         minHeight: '100vh',
@@ -295,6 +296,29 @@ export default async function Page() {
                       {formatText(item.recommended_action)}
                     </p>
                   </div>
+
+                  {item.id !== undefined && item.id !== null ? (
+                    <div style={{ marginTop: '1rem' }}>
+                      <Link
+                        href={`/cases/${item.id}`}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.35rem',
+                          padding: '0.8rem 1rem',
+                          borderRadius: '12px',
+                          backgroundColor: '#0f172a',
+                          color: '#ffffff',
+                          fontSize: '0.95rem',
+                          fontWeight: 700,
+                          textDecoration: 'none',
+                          boxShadow: '0 8px 24px rgba(15, 23, 42, 0.14)',
+                        }}
+                      >
+                        Open case →
+                      </Link>
+                    </div>
+                  ) : null}
                 </article>
               );
             })}
