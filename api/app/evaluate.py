@@ -5,10 +5,18 @@ import os
 import psycopg2
 
 
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL_SYNC",
-    "postgresql://cue2case:cue2case_dev@localhost:5433/cue2case",
-)
+def resolve_database_url():
+    """Resolve a psycopg2-compatible database URL for host or container execution."""
+    for env_var in ("DATABASE_URL_SYNC", "DATABASE_URL", "DATABASE_URL_ASYNC"):
+        value = os.environ.get(env_var)
+        if value:
+            return value.replace("postgresql+asyncpg://", "postgresql://")
+
+    # Host fallback first; container-safe override via env vars above is preferred.
+    return "postgresql://cue2case:cue2case_dev@localhost:5433/cue2case"
+
+
+DATABASE_URL = resolve_database_url()
 
 
 def fetch_scalar(cur, query, params=None):
