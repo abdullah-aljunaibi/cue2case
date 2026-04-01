@@ -222,29 +222,37 @@ async def list_case_map_points(
     offset: int = Query(default=0, ge=0),
 ):
     query = """
-        WITH latest_alert AS (
-            SELECT DISTINCT ON (a.mmsi)
-                a.mmsi,
-                ST_X(a.geom::geometry) AS lon,
-                ST_Y(a.geom::geometry) AS lat,
-                a.observed_at
-            FROM alert a
-            ORDER BY a.mmsi, a.observed_at DESC, a.id DESC
-        )
         SELECT
-            ic.id AS case_id,
+            ic.id,
             ic.title,
-            ic.anomaly_score,
-            ic.confidence_score,
-            ic.priority,
             ic.mmsi,
+            ic.status,
+            ic.priority,
+            ic.anomaly_score,
+            ic.rank_score,
+            ic.confidence_score,
+            ic.start_observed_at,
+            ic.end_observed_at,
             v.vessel_name,
-            la.lon,
-            la.lat
+            COALESCE(ST_X(ic.primary_geom::geometry), la.lon) AS lon,
+            COALESCE(ST_Y(ic.primary_geom::geometry), la.lat) AS lat
         FROM investigation_case ic
         LEFT JOIN vessel v ON v.mmsi = ic.mmsi
-        LEFT JOIN latest_alert la ON la.mmsi = ic.mmsi
-        ORDER BY ic.anomaly_score DESC, ic.created_at DESC
+        LEFT JOIN LATERAL (
+            SELECT
+                ST_X(a.geom::geometry) AS lon,
+                ST_Y(a.geom::geometry) AS lat
+            FROM alert a
+            WHERE a.mmsi = ic.mmsi
+              AND a.geom IS NOT NULL
+            ORDER BY a.observed_at DESC, a.id DESC
+            LIMIT 1
+        ) la ON ic.primary_geom IS NULL
+        ORDER BY
+            ic.rank_score DESC NULLS LAST,
+            ic.confidence_score DESC NULLS LAST,
+            ic.anomaly_score DESC NULLS LAST,
+            ic.created_at DESC
         LIMIT %s OFFSET %s
     """
 
