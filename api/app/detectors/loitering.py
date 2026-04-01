@@ -193,7 +193,7 @@ def detect_loitering():
             alerts.append({
                 'mmsi': mmsi,
                 'alert_type': 'loitering',
-                'severity': round(severity, 3),
+                'severity': max(0.05, min(round(severity, 3), 1.0)),
                 'observed_at': positions[0][1],
                 'lon': mid[2],
                 'lat': mid[3],
