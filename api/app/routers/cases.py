@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Body, HTTPException, Query
 
-from api.app.main import get_db_cursor, normalize_row, normalize_value
+from app.db import get_db_cursor, normalize_row, normalize_value
 
 router = APIRouter(prefix="/cases", tags=["cases"])
 

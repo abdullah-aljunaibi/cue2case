@@ -2,17 +2,13 @@
 
 import json
 import os
-from contextlib import contextmanager
-from decimal import Decimal
 from typing import Any, Dict, List, Optional
-from uuid import UUID
 
-import psycopg2
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from psycopg2.extras import RealDictCursor
 
-from api.app.routers.cases import router as cases_router
+from app.db import get_db_cursor, normalize_row, normalize_value
+from app.routers.cases import router as cases_router
 
 app = FastAPI(title="Cue2Case API", version="0.1.0")
 
@@ -41,40 +37,6 @@ AVAILABLE_ROUTES = [
     "/external-cues/import-sample",
 ]
 
-
-def get_database_url() -> str:
-    database_url = os.getenv("DATABASE_URL") or os.getenv("DATABASE_URL_ASYNC")
-    if not database_url:
-        raise HTTPException(status_code=500, detail="Database URL is not configured")
-    if database_url.startswith("postgresql+asyncpg://"):
-        return database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
-    return database_url
-
-
-@contextmanager
-def get_db_cursor():
-    connection = psycopg2.connect(get_database_url(), cursor_factory=RealDictCursor)
-    try:
-        with connection.cursor() as cursor:
-            yield cursor
-    finally:
-        connection.close()
-
-
-def normalize_value(value: Any) -> Any:
-    if isinstance(value, Decimal):
-        return float(value)
-    if isinstance(value, list):
-        return [normalize_value(item) for item in value]
-    if isinstance(value, dict):
-        return {key: normalize_value(item) for key, item in value.items()}
-    return value
-
-
-def normalize_row(row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    if row is None:
-        return None
-    return {key: normalize_value(value) for key, value in row.items()}
 
 
 def validate_external_cue_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
