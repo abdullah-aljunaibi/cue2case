@@ -1,24 +1,50 @@
-// Server-rendered Cue2Case map staging page that summarizes case markers without a map library.
-import Link from 'next/link';
+// Client-rendered Cue2Case map page using raw Leaflet for case markers and vessel tracks.
+'use client';
 
-const apiUrl =
-  process.env.INTERNAL_API_URL ||
-  process.env.NEXT_PUBLIC_API_URL ||
-  'http://localhost:8000';
+import 'leaflet/dist/leaflet.css';
+
+import Link from 'next/link';
+import { useEffect, useMemo, useRef, useState } from 'react';
+
+const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 type MapCaseItem = {
   case_id?: string | number | null;
   id?: string | number | null;
   title?: string | null;
   anomaly_score?: number | null;
+  rank_score?: number | null;
+  confidence_score?: number | null;
   priority?: number | string | null;
+  status?: string | null;
   mmsi?: string | number | null;
   vessel_name?: string | null;
   lon?: number | string | null;
   lat?: number | string | null;
 };
 
+type NormalizedMapCase = MapCaseItem & {
+  caseId: string | number | null;
+  lon: number | null;
+  lat: number | null;
+  hasCoordinates: boolean;
+};
+
 type MapCasesResponse = MapCaseItem[] | { items?: MapCaseItem[] | null };
+
+type GeoJsonLineString = {
+  type?: string;
+  coordinates?: number[][];
+};
+
+type TrackItem = {
+  id?: string | number | null;
+  geometry?: GeoJsonLineString | null;
+};
+
+type LeafletModule = any;
+
+type MarkerRegistry = Map<string, any>;
 
 function asCases(payload: MapCasesResponse): MapCaseItem[] {
   if (Array.isArray(payload)) {
@@ -65,30 +91,32 @@ function formatCoordinate(value: number | null) {
   return value.toFixed(4);
 }
 
-async function getMapCases() {
-  const endpoint = `${apiUrl}/map/cases`;
-  const response = await fetch(endpoint, { cache: 'no-store' });
-
-  if (!response.ok) {
-    throw new Error(`API request failed with status ${response.status}`);
+function getCaseKey(item: { caseId: string | number | null; mmsi?: string | number | null }, index = 0) {
+  if (item.caseId !== null) {
+    return `case-${item.caseId}`;
   }
 
-  const payload = (await response.json()) as MapCasesResponse;
-  return asCases(payload);
+  if (item.mmsi !== null && item.mmsi !== undefined) {
+    return `mmsi-${item.mmsi}`;
+  }
+
+  return `row-${index}`;
 }
 
-export default async function MapPage() {
-  let cases: MapCaseItem[] = [];
-  let errorMessage: string | null = null;
-
-  try {
-    cases = await getMapCases();
-  } catch (error) {
-    errorMessage =
-      error instanceof Error ? error.message : 'Unknown error while loading map cases.';
+function getCaseLabel(item: MapCaseItem) {
+  if (item.vessel_name && item.vessel_name.trim().length > 0) {
+    return item.vessel_name;
   }
 
-  const normalizedCases = cases.map((item) => {
+  if (item.title && item.title.trim().length > 0) {
+    return item.title;
+  }
+
+  return 'Untitled case';
+}
+
+function normalizeCases(items: MapCaseItem[]): NormalizedMapCase[] {
+  return items.map((item) => {
     const lon = parseCoordinate(item.lon);
     const lat = parseCoordinate(item.lat);
     const caseId = item.case_id ?? item.id ?? null;
@@ -101,11 +129,297 @@ export default async function MapPage() {
       hasCoordinates: lon !== null && lat !== null,
     };
   });
+}
 
-  const totalMarkers = normalizedCases.length;
-  const markersWithCoordinates = normalizedCases.filter((item) => item.hasCoordinates);
+function flattenTrackCoordinates(tracks: TrackItem[]) {
+  const points: [number, number][] = [];
+
+  for (const track of tracks) {
+    const coordinates = track.geometry?.coordinates;
+
+    if (!Array.isArray(coordinates)) {
+      continue;
+    }
+
+    for (const coordinate of coordinates) {
+      if (!Array.isArray(coordinate) || coordinate.length < 2) {
+        continue;
+      }
+
+      const lon = Number(coordinate[0]);
+      const lat = Number(coordinate[1]);
+
+      if (Number.isFinite(lat) && Number.isFinite(lon)) {
+        points.push([lat, lon]);
+      }
+    }
+  }
+
+  return points;
+}
+
+function getMarkerStyle(selected: boolean) {
+  return selected
+    ? {
+        radius: 9,
+        color: '#7c2d12',
+        weight: 3,
+        fillColor: '#fb923c',
+        fillOpacity: 0.92,
+      }
+    : {
+        radius: 6,
+        color: '#0f172a',
+        weight: 2,
+        fillColor: '#2563eb',
+        fillOpacity: 0.78,
+      };
+}
+
+export default function MapPage() {
+  const [cases, setCases] = useState<NormalizedMapCase[]>([]);
+  const [casesError, setCasesError] = useState<string | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [trackError, setTrackError] = useState<string | null>(null);
+  const [trackLoading, setTrackLoading] = useState(false);
+
+  const mapElementRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<any>(null);
+  const leafletRef = useRef<LeafletModule | null>(null);
+  const markersRef = useRef<MarkerRegistry>(new Map());
+  const markersLayerRef = useRef<any>(null);
+  const trackLayerRef = useRef<any>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCases() {
+      try {
+        setCasesError(null);
+        const response = await fetch(`${apiUrl}/map/cases`, { cache: 'no-store' });
+
+        if (!response.ok) {
+          throw new Error(`API request failed with status ${response.status}`);
+        }
+
+        const payload = (await response.json()) as MapCasesResponse;
+        const normalizedCases = normalizeCases(asCases(payload));
+
+        if (cancelled) {
+          return;
+        }
+
+        setCases(normalizedCases);
+
+        const firstSelectable = normalizedCases.find((item) => item.hasCoordinates) ?? normalizedCases[0] ?? null;
+        setSelectedKey(firstSelectable ? getCaseKey(firstSelectable) : null);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setCases([]);
+        setCasesError(
+          error instanceof Error ? error.message : 'Unknown error while loading map cases.',
+        );
+      }
+    }
+
+    loadCases();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function ensureMap() {
+      if (!mapElementRef.current || mapRef.current) {
+        return;
+      }
+
+      const L = require('leaflet');
+
+      if (cancelled || !mapElementRef.current) {
+        return;
+      }
+
+      leafletRef.current = L;
+
+      const map = L.map(mapElementRef.current, {
+        center: [18, 54],
+        zoom: 3,
+        zoomControl: true,
+      });
+
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19,
+      }).addTo(map);
+
+      markersLayerRef.current = L.layerGroup().addTo(map);
+      mapRef.current = map;
+    }
+
+    ensureMap();
+
+    return () => {
+      cancelled = true;
+
+      trackLayerRef.current?.remove();
+      trackLayerRef.current = null;
+      markersLayerRef.current?.clearLayers();
+      markersRef.current.clear();
+      mapRef.current?.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const L = leafletRef.current;
+    const map = mapRef.current;
+    const markersLayer = markersLayerRef.current;
+
+    if (!L || !map || !markersLayer) {
+      return;
+    }
+
+    markersLayer.clearLayers();
+    markersRef.current.clear();
+
+    const coordinateCases = cases.filter((item) => item.hasCoordinates);
+
+    for (const [index, item] of coordinateCases.entries()) {
+      const key = getCaseKey(item, index);
+      const marker = L.circleMarker([item.lat as number, item.lon as number], getMarkerStyle(key === selectedKey));
+
+      marker.bindTooltip(getCaseLabel(item), {
+        direction: 'top',
+        offset: [0, -8],
+      });
+
+      marker.on('click', () => {
+        setSelectedKey(key);
+      });
+
+      marker.addTo(markersLayer);
+      markersRef.current.set(key, marker);
+    }
+
+    if (coordinateCases.length === 0) {
+      map.setView([18, 54], 3);
+      return;
+    }
+
+    const bounds = L.latLngBounds(
+      coordinateCases.map((item) => [item.lat as number, item.lon as number] as [number, number]),
+    );
+
+    if (bounds.isValid()) {
+      map.fitBounds(bounds, { padding: [28, 28] });
+    }
+  }, [cases]);
+
+  useEffect(() => {
+    for (const [key, marker] of markersRef.current.entries()) {
+      marker.setStyle(getMarkerStyle(key === selectedKey));
+    }
+  }, [selectedKey]);
+
+  const selectedCase = useMemo(
+    () => cases.find((item, index) => getCaseKey(item, index) === selectedKey) ?? null,
+    [cases, selectedKey],
+  );
+
+  useEffect(() => {
+    const L = leafletRef.current;
+    const map = mapRef.current;
+
+    if (!L || !map) {
+      return;
+    }
+
+    trackLayerRef.current?.remove();
+    trackLayerRef.current = null;
+
+    if (!selectedCase || selectedCase.mmsi === null || selectedCase.mmsi === undefined) {
+      setTrackLoading(false);
+      setTrackError(null);
+      return;
+    }
+
+    const selectedMmsi = String(selectedCase.mmsi);
+    let cancelled = false;
+
+    async function loadTrack() {
+      try {
+        setTrackLoading(true);
+        setTrackError(null);
+
+        const response = await fetch(`${apiUrl}/tracks/${encodeURIComponent(selectedMmsi)}`, {
+          cache: 'no-store',
+        });
+
+        if (!response.ok) {
+          throw new Error(`Track request failed with status ${response.status}`);
+        }
+
+        const payload = (await response.json()) as TrackItem[];
+
+        if (cancelled) {
+          return;
+        }
+
+        const points = flattenTrackCoordinates(Array.isArray(payload) ? payload : []);
+
+        if (points.length === 0) {
+          setTrackLoading(false);
+          setTrackError('Track data is not available for this vessel yet.');
+          return;
+        }
+
+        const polyline = L.polyline(points, {
+          color: '#f97316',
+          weight: 3,
+          opacity: 0.9,
+        }).addTo(map);
+
+        trackLayerRef.current = polyline;
+
+        const marker = markersRef.current.get(selectedKey ?? '');
+        const markerLatLng = marker ? [marker.getLatLng().lat, marker.getLatLng().lng] : null;
+        const combinedPoints = markerLatLng ? [...points, markerLatLng as [number, number]] : points;
+        const bounds = L.latLngBounds(combinedPoints);
+
+        if (bounds.isValid()) {
+          map.fitBounds(bounds, { padding: [32, 32] });
+        }
+
+        setTrackLoading(false);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setTrackLoading(false);
+        setTrackError(
+          error instanceof Error ? error.message : 'Unknown error while loading track data.',
+        );
+      }
+    }
+
+    loadTrack();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCase, selectedKey]);
+
+  const totalMarkers = cases.length;
+  const markersWithCoordinates = cases.filter((item) => item.hasCoordinates);
   const missingCoordinatesCount = totalMarkers - markersWithCoordinates.length;
-  const previewMarkers = markersWithCoordinates.slice(0, 10);
 
   return (
     <main
@@ -117,7 +431,7 @@ export default async function MapPage() {
         padding: '2rem',
       }}
     >
-      <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+      <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
         <header
           style={{
             marginBottom: '1.5rem',
@@ -144,11 +458,11 @@ export default async function MapPage() {
           </Link>
           <h1 style={{ margin: '0 0 0.4rem', fontSize: '2rem' }}>Cue2Case Map View</h1>
           <p style={{ margin: 0, color: '#475569', fontSize: '1rem' }}>
-            Spatial case staging view
+            Real-time spatial case view with raw Leaflet, OSM tiles, and vessel tracks.
           </p>
         </header>
 
-        {errorMessage ? (
+        {casesError ? (
           <section
             style={{
               marginBottom: '1.5rem',
@@ -160,65 +474,113 @@ export default async function MapPage() {
               boxShadow: '0 4px 12px rgba(159, 18, 57, 0.08)',
             }}
           >
-            <div style={{ fontWeight: 700, marginBottom: '0.35rem' }}>
-              Unable to load map cases
-            </div>
-            <div style={{ fontSize: '0.95rem' }}>
-              {errorMessage}. Check API availability and configuration.
-            </div>
+            <div style={{ fontWeight: 700, marginBottom: '0.35rem' }}>Unable to load map cases</div>
+            <div style={{ fontSize: '0.95rem' }}>{casesError}. Check API availability and configuration.</div>
           </section>
         ) : null}
 
         <section
           style={{
             display: 'grid',
-            gridTemplateColumns: 'minmax(0, 1.1fr) minmax(0, 0.9fr)',
-            gap: '1.5rem',
+            gridTemplateColumns: 'minmax(320px, 380px) minmax(0, 1fr)',
+            gap: '1.25rem',
             alignItems: 'start',
           }}
         >
-          <div
+          <aside
             style={{
               backgroundColor: '#ffffff',
               border: '1px solid #dbe3f0',
               borderRadius: '16px',
-              padding: '1.25rem',
+              padding: '1rem',
               boxShadow: '0 8px 24px rgba(15, 23, 42, 0.04)',
+              display: 'grid',
+              gap: '1rem',
+              maxHeight: 'calc(100vh - 180px)',
+              overflow: 'hidden',
             }}
           >
-            <div style={{ marginBottom: '1rem' }}>
-              <h2 style={{ margin: '0 0 0.3rem', fontSize: '1.25rem' }}>Case markers</h2>
+            <div>
+              <h2 style={{ margin: '0 0 0.35rem', fontSize: '1.2rem' }}>Cases</h2>
               <p style={{ margin: 0, color: '#64748b', fontSize: '0.92rem' }}>
-                Case-level marker candidates from the spatial API payload.
+                Select a case to highlight it and load the latest vessel track.
               </p>
             </div>
 
-            {normalizedCases.length === 0 ? (
-              <div
-                style={{
-                  border: '1px dashed #cbd5e1',
-                  borderRadius: '14px',
-                  padding: '1.5rem',
-                  textAlign: 'center',
-                  color: '#475569',
-                  backgroundColor: '#f8fafc',
-                }}
-              >
-                No map cases available right now.
-              </div>
-            ) : (
-              <div style={{ display: 'grid', gap: '0.85rem' }}>
-                {normalizedCases.map((item, index) => {
-                  const key = item.caseId ?? `${item.title ?? 'marker'}-${index}`;
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                gap: '0.65rem',
+              }}
+            >
+              {[
+                { label: 'Cases', value: String(totalMarkers) },
+                { label: 'Mapped', value: String(markersWithCoordinates.length) },
+                { label: 'Missing coords', value: String(missingCoordinatesCount) },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  style={{
+                    padding: '0.8rem',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '12px',
+                    backgroundColor: '#f8fafc',
+                  }}
+                >
+                  <div style={{ fontSize: '0.76rem', color: '#64748b', marginBottom: '0.2rem' }}>{item.label}</div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{item.value}</div>
+                </div>
+              ))}
+            </div>
+
+            <div
+              style={{
+                padding: '0.85rem 0.95rem',
+                borderRadius: '12px',
+                backgroundColor: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                color: '#475569',
+                fontSize: '0.9rem',
+                lineHeight: 1.5,
+              }}
+            >
+              Overlays note: geofence overlays are not yet exposed by the API, so this map only shows live case points and tracks.
+            </div>
+
+            <div style={{ display: 'grid', gap: '0.75rem', overflowY: 'auto', paddingRight: '0.25rem' }}>
+              {cases.length === 0 ? (
+                <div
+                  style={{
+                    border: '1px dashed #cbd5e1',
+                    borderRadius: '14px',
+                    padding: '1rem',
+                    textAlign: 'center',
+                    color: '#475569',
+                    backgroundColor: '#f8fafc',
+                  }}
+                >
+                  No map cases available right now.
+                </div>
+              ) : (
+                cases.map((item, index) => {
+                  const key = getCaseKey(item, index);
+                  const selected = key === selectedKey;
 
                   return (
-                    <article
+                    <button
                       key={key}
+                      type="button"
+                      onClick={() => setSelectedKey(key)}
                       style={{
-                        border: '1px solid #e2e8f0',
+                        textAlign: 'left',
+                        width: '100%',
+                        border: selected ? '1px solid #2563eb' : '1px solid #e2e8f0',
                         borderRadius: '14px',
-                        padding: '1rem',
-                        backgroundColor: '#f8fafc',
+                        padding: '0.95rem',
+                        backgroundColor: selected ? '#eff6ff' : '#ffffff',
+                        cursor: 'pointer',
+                        boxShadow: selected ? '0 0 0 1px rgba(37, 99, 235, 0.08)' : 'none',
                       }}
                     >
                       <div
@@ -227,98 +589,70 @@ export default async function MapPage() {
                           justifyContent: 'space-between',
                           gap: '0.75rem',
                           alignItems: 'flex-start',
-                          flexWrap: 'wrap',
-                          marginBottom: '0.75rem',
+                          marginBottom: '0.6rem',
                         }}
                       >
                         <div>
-                          <h3 style={{ margin: '0 0 0.3rem', fontSize: '1.05rem' }}>
-                            {formatText(item.title)}
-                          </h3>
-                          <div style={{ color: '#475569', fontSize: '0.92rem' }}>
-                            {item.vessel_name ? `${item.vessel_name} · ` : ''}
-                            MMSI: {item.mmsi ?? '—'}
+                          <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: '0.2rem' }}>
+                            {getCaseLabel(item)}
                           </div>
+                          <div style={{ color: '#475569', fontSize: '0.88rem' }}>{formatText(item.title)}</div>
                         </div>
-                        <div
+                        <span
                           style={{
-                            backgroundColor: '#eff6ff',
-                            border: '1px solid #bfdbfe',
-                            color: '#1d4ed8',
+                            display: 'inline-flex',
+                            alignItems: 'center',
                             borderRadius: '999px',
-                            padding: '0.3rem 0.7rem',
-                            fontSize: '0.82rem',
+                            padding: '0.24rem 0.55rem',
+                            fontSize: '0.75rem',
                             fontWeight: 700,
+                            backgroundColor: selected ? '#dbeafe' : '#f8fafc',
+                            border: '1px solid #cbd5e1',
+                            color: '#334155',
                             whiteSpace: 'nowrap',
                           }}
                         >
-                          Score {formatScore(item.anomaly_score)}
-                        </div>
+                          {formatText(item.status)}
+                        </span>
                       </div>
 
                       <div
                         style={{
                           display: 'grid',
-                          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-                          gap: '0.75rem',
-                          marginBottom: '0.85rem',
+                          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                          gap: '0.45rem',
+                          marginBottom: '0.65rem',
                         }}
                       >
-                        <div
-                          style={{
-                            padding: '0.75rem',
-                            backgroundColor: '#ffffff',
-                            border: '1px solid #e2e8f0',
-                            borderRadius: '12px',
-                          }}
-                        >
-                          <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.2rem' }}>
-                            Priority
-                          </div>
-                          <div style={{ fontSize: '0.95rem', fontWeight: 600 }}>
-                            {item.priority ?? '—'}
-                          </div>
+                        <div style={{ fontSize: '0.82rem', color: '#475569' }}>
+                          <div style={{ color: '#64748b' }}>Rank</div>
+                          <div style={{ fontWeight: 700 }}>{formatScore(item.rank_score)}</div>
                         </div>
-                        <div
-                          style={{
-                            padding: '0.75rem',
-                            backgroundColor: '#ffffff',
-                            border: '1px solid #e2e8f0',
-                            borderRadius: '12px',
-                          }}
-                        >
-                          <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.2rem' }}>
-                            Coordinates
-                          </div>
-                          <div style={{ fontSize: '0.95rem', fontWeight: 600 }}>
-                            {item.hasCoordinates
-                              ? `${formatCoordinate(item.lon)}, ${formatCoordinate(item.lat)}`
-                              : 'No coordinates'}
-                          </div>
+                        <div style={{ fontSize: '0.82rem', color: '#475569' }}>
+                          <div style={{ color: '#64748b' }}>Anomaly</div>
+                          <div style={{ fontWeight: 700 }}>{formatScore(item.anomaly_score)}</div>
+                        </div>
+                        <div style={{ fontSize: '0.82rem', color: '#475569' }}>
+                          <div style={{ color: '#64748b' }}>Confidence</div>
+                          <div style={{ fontWeight: 700 }}>{formatScore(item.confidence_score)}</div>
                         </div>
                       </div>
 
-                      {item.caseId !== null ? (
-                        <Link
-                          href={`/cases/${item.caseId}`}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            color: '#1d4ed8',
-                            fontSize: '0.92rem',
-                            fontWeight: 700,
-                            textDecoration: 'none',
-                          }}
-                        >
-                          Open case →
-                        </Link>
-                      ) : null}
-                    </article>
+                      <div style={{ color: '#475569', fontSize: '0.84rem', lineHeight: 1.5 }}>
+                        <div>MMSI: {item.mmsi ?? '—'}</div>
+                        <div>
+                          Coordinates:{' '}
+                          {item.hasCoordinates
+                            ? `${formatCoordinate(item.lon)}, ${formatCoordinate(item.lat)}`
+                            : 'No coordinates'}
+                        </div>
+                      </div>
+                    </button>
                   );
-                })}
-              </div>
-            )}
-          </div>
+                })
+              )}
+            </div>
+          </aside>
 
           <div style={{ display: 'grid', gap: '1rem' }}>
             <section
@@ -326,42 +660,43 @@ export default async function MapPage() {
                 backgroundColor: '#ffffff',
                 border: '1px solid #dbe3f0',
                 borderRadius: '16px',
-                padding: '1.25rem',
+                padding: '1rem',
                 boxShadow: '0 8px 24px rgba(15, 23, 42, 0.04)',
               }}
             >
-              <h2 style={{ margin: '0 0 0.8rem', fontSize: '1.25rem' }}>Map canvas placeholder</h2>
               <div
                 style={{
-                  minHeight: '280px',
-                  border: '2px dashed #94a3b8',
-                  borderRadius: '16px',
-                  backgroundColor: '#f8fafc',
-                  padding: '1.25rem',
-                  display: 'grid',
-                  alignContent: 'start',
-                  gap: '0.85rem',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: '1rem',
+                  flexWrap: 'wrap',
+                  marginBottom: '0.9rem',
                 }}
               >
-                <div style={{ fontSize: '2rem', fontWeight: 700 }}>{totalMarkers}</div>
-                <div style={{ color: '#334155', lineHeight: 1.6 }}>
-                  <div>Total marker count: {totalMarkers}</div>
-                  <div>Count with coordinates: {markersWithCoordinates.length}</div>
-                  <div>Count missing coordinates: {missingCoordinatesCount}</div>
+                <div>
+                  <h2 style={{ margin: '0 0 0.25rem', fontSize: '1.2rem' }}>Operational map</h2>
+                  <p style={{ margin: 0, color: '#64748b', fontSize: '0.92rem' }}>
+                    OSM basemap with case circle markers and the selected vessel track.
+                  </p>
                 </div>
-                <div
-                  style={{
-                    padding: '0.85rem 1rem',
-                    borderRadius: '12px',
-                    backgroundColor: '#e0f2fe',
-                    border: '1px solid #bae6fd',
-                    color: '#0f172a',
-                    fontWeight: 600,
-                  }}
-                >
-                  Leaflet/Mapbox layer goes here next.
+                <div style={{ color: '#475569', fontSize: '0.88rem', textAlign: 'right' }}>
+                  <div>Selected: {selectedCase ? getCaseLabel(selectedCase) : 'None'}</div>
+                  <div>{trackLoading ? 'Loading track…' : trackError ? 'Track unavailable' : 'Track ready when available'}</div>
                 </div>
               </div>
+
+              <div
+                ref={mapElementRef}
+                style={{
+                  height: '68vh',
+                  minHeight: '520px',
+                  width: '100%',
+                  borderRadius: '14px',
+                  overflow: 'hidden',
+                  border: '1px solid #dbe3f0',
+                  backgroundColor: '#dbeafe',
+                }}
+              />
             </section>
 
             <section
@@ -369,12 +704,96 @@ export default async function MapPage() {
                 backgroundColor: '#ffffff',
                 border: '1px solid #dbe3f0',
                 borderRadius: '16px',
-                padding: '1.25rem',
+                padding: '1rem 1.1rem',
                 boxShadow: '0 8px 24px rgba(15, 23, 42, 0.04)',
               }}
             >
-              <h2 style={{ margin: '0 0 0.8rem', fontSize: '1.1rem' }}>Top coordinates</h2>
-              {previewMarkers.length === 0 ? (
+              <h2 style={{ margin: '0 0 0.75rem', fontSize: '1.05rem' }}>Selection detail</h2>
+
+              {selectedCase ? (
+                <div style={{ display: 'grid', gap: '0.8rem' }}>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                      gap: '0.75rem',
+                    }}
+                  >
+                    {[
+                      { label: 'Vessel', value: formatText(selectedCase.vessel_name) },
+                      { label: 'Title', value: formatText(selectedCase.title) },
+                      { label: 'Status', value: formatText(selectedCase.status) },
+                      { label: 'Priority', value: String(selectedCase.priority ?? '—') },
+                      { label: 'MMSI', value: String(selectedCase.mmsi ?? '—') },
+                      {
+                        label: 'Coordinates',
+                        value: selectedCase.hasCoordinates
+                          ? `${formatCoordinate(selectedCase.lon)}, ${formatCoordinate(selectedCase.lat)}`
+                          : 'No coordinates',
+                      },
+                    ].map((item) => (
+                      <div
+                        key={item.label}
+                        style={{
+                          padding: '0.8rem',
+                          borderRadius: '12px',
+                          border: '1px solid #e2e8f0',
+                          backgroundColor: '#f8fafc',
+                        }}
+                      >
+                        <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.22rem' }}>
+                          {item.label}
+                        </div>
+                        <div style={{ fontWeight: 700, color: '#0f172a' }}>{item.value}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(3, minmax(120px, 1fr))',
+                      gap: '0.75rem',
+                    }}
+                  >
+                    {[
+                      { label: 'Rank', value: formatScore(selectedCase.rank_score) },
+                      { label: 'Anomaly', value: formatScore(selectedCase.anomaly_score) },
+                      { label: 'Confidence', value: formatScore(selectedCase.confidence_score) },
+                    ].map((item) => (
+                      <div
+                        key={item.label}
+                        style={{
+                          padding: '0.85rem',
+                          borderRadius: '12px',
+                          backgroundColor: '#0f172a',
+                          color: '#f8fafc',
+                        }}
+                      >
+                        <div style={{ fontSize: '0.76rem', opacity: 0.72, marginBottom: '0.2rem' }}>
+                          {item.label}
+                        </div>
+                        <div style={{ fontWeight: 700, fontSize: '1rem' }}>{item.value}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {trackError ? (
+                    <div
+                      style={{
+                        padding: '0.85rem 0.95rem',
+                        backgroundColor: '#fff7ed',
+                        border: '1px solid #fdba74',
+                        borderRadius: '12px',
+                        color: '#9a3412',
+                        fontSize: '0.92rem',
+                      }}
+                    >
+                      Track note: {trackError}. Markers remain available.
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
                 <div
                   style={{
                     border: '1px dashed #cbd5e1',
@@ -384,46 +803,7 @@ export default async function MapPage() {
                     backgroundColor: '#f8fafc',
                   }}
                 >
-                  No coordinate-bearing markers available yet.
-                </div>
-              ) : (
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.92rem' }}>
-                    <thead>
-                      <tr style={{ textAlign: 'left', color: '#475569' }}>
-                        <th style={{ padding: '0 0 0.75rem', borderBottom: '1px solid #e2e8f0' }}>
-                          Title
-                        </th>
-                        <th style={{ padding: '0 0 0.75rem', borderBottom: '1px solid #e2e8f0' }}>
-                          Vessel
-                        </th>
-                        <th style={{ padding: '0 0 0.75rem', borderBottom: '1px solid #e2e8f0' }}>
-                          Lon
-                        </th>
-                        <th style={{ padding: '0 0 0.75rem', borderBottom: '1px solid #e2e8f0' }}>
-                          Lat
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {previewMarkers.map((item, index) => (
-                        <tr key={item.caseId ?? `coord-${index}`}>
-                          <td style={{ padding: '0.75rem 0', borderBottom: '1px solid #f1f5f9' }}>
-                            {formatText(item.title)}
-                          </td>
-                          <td style={{ padding: '0.75rem 0', borderBottom: '1px solid #f1f5f9' }}>
-                            {formatText(item.vessel_name)}
-                          </td>
-                          <td style={{ padding: '0.75rem 0', borderBottom: '1px solid #f1f5f9' }}>
-                            {formatCoordinate(item.lon)}
-                          </td>
-                          <td style={{ padding: '0.75rem 0', borderBottom: '1px solid #f1f5f9' }}>
-                            {formatCoordinate(item.lat)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  Select a case from the panel or click a marker on the map.
                 </div>
               )}
             </section>
