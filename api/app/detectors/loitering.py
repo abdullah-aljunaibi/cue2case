@@ -305,3 +305,7 @@ def _process_dwell(mmsi, low_speed_positions, cur_geo, alerts):
             + (f"Possibly benign: {'; '.join(reasons_benign)}." if reasons_benign else "")
         )
     })
+
+
+if __name__ == '__main__':
+    detect_loitering()
