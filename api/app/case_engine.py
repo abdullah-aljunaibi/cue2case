@@ -204,6 +204,20 @@ def score_incident(alerts_list):
     }
 
 
+def compute_rank_score(anomaly_score, confidence_score, corroboration_bonus):
+    """Compute the capped trust-oriented rank score for a case."""
+    cue_linkage_bonus = 0.0
+    recency_decay = 0.0
+    rank_score = (
+        anomaly_score
+        + (confidence_score * 0.3)
+        + (corroboration_bonus * 0.5)
+        + cue_linkage_bonus
+        + recency_decay
+    )
+    return round(min(rank_score, 2.0), 4)
+
+
 def build_case_record(mmsi, incident_index, alerts_list, vessel_info):
     """Build a case payload and evidence rows for a single incident."""
     incident_alerts = sorted(alerts_list, key=lambda alert: (alert["observed_at"], alert["id"]))
@@ -220,6 +234,15 @@ def build_case_record(mmsi, incident_index, alerts_list, vessel_info):
     vessel_type = vessel_meta.get("type")
     incident_start = incident_alerts[0]["observed_at"]
     incident_end = incident_alerts[-1]["observed_at"]
+    primary_alert = max(
+        incident_alerts,
+        key=lambda alert: (float(alert["severity"]), alert["observed_at"], alert["id"]),
+    )
+    rank_score = compute_rank_score(
+        scores["anomaly_score"],
+        scores["confidence_score"],
+        scores["corroboration_bonus"],
+    )
 
     title = (
         f"[{mmsi}] {vessel_name} — Incident at "
@@ -290,6 +313,8 @@ def build_case_record(mmsi, incident_index, alerts_list, vessel_info):
                     f"Incident {incident_index} evidence #{order_index}: "
                     f"{alert['alert_type']} at {alert['observed_at'].isoformat()}"
                 ),
+                alert["observed_at"],
+                order_index,
             )
         )
 
@@ -307,30 +332,36 @@ def build_case_record(mmsi, incident_index, alerts_list, vessel_info):
         ),
         "evidence_rows": evidence_rows,
         "incident_start": incident_start,
+        "incident_end": incident_end,
+        "start_observed_at": incident_start,
+        "end_observed_at": incident_end,
+        "primary_lon": primary_alert["lon"],
+        "primary_lat": primary_alert["lat"],
+        "rank_score": rank_score,
     }
-
-
-def table_has_column(cur, table_name, column_name):
-    """Return whether a table currently has a named column."""
-    cur.execute(
-        """
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_schema = 'public'
-          AND table_name = %s
-          AND column_name = %s
-        """,
-        (table_name, column_name),
-    )
-    return cur.fetchone() is not None
 
 
 def build_cases():
     """Build investigation cases from alerts using temporal incident clustering."""
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
+    run_id = None
+    cases_created = 0
+    evidence_created = 0
+    alerts_processed = 0
 
     try:
+        cur.execute(
+            """
+            INSERT INTO pipeline_run (run_type)
+            VALUES (%s)
+            RETURNING id
+            """,
+            ("case_build",),
+        )
+        run_id = cur.fetchone()[0]
+        conn.commit()
+
         cur.execute("DELETE FROM case_evidence")
         cur.execute("DELETE FROM investigation_case")
         conn.commit()
@@ -352,7 +383,8 @@ def build_cases():
             """
         )
         alerts = cur.fetchall()
-        print(f"Processing {len(alerts)} alerts...")
+        alerts_processed = len(alerts)
+        print(f"Processing {alerts_processed} alerts...")
 
         vessel_alerts = defaultdict(list)
         for row in alerts:
@@ -398,63 +430,58 @@ def build_cases():
             )
         )
 
-        has_confidence_score = table_has_column(cur, "investigation_case", "confidence_score")
-
-        cases_created = 0
-        evidence_created = 0
         for case_record in case_records:
-            if has_confidence_score:
-                cur.execute(
-                    """
-                    INSERT INTO investigation_case (
-                        title,
-                        mmsi,
-                        anomaly_score,
-                        confidence_score,
-                        status,
-                        priority,
-                        summary,
-                        recommended_action
-                    )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    RETURNING id
-                    """,
-                    (
-                        case_record["title"],
-                        case_record["mmsi"],
-                        case_record["anomaly_score"],
-                        case_record["confidence_score"],
-                        case_record["status"],
-                        case_record["priority"],
-                        case_record["summary"],
-                        case_record["recommended_action"],
-                    ),
+            cur.execute(
+                """
+                INSERT INTO investigation_case (
+                    title,
+                    mmsi,
+                    anomaly_score,
+                    confidence_score,
+                    status,
+                    priority,
+                    summary,
+                    recommended_action,
+                    primary_geom,
+                    start_observed_at,
+                    end_observed_at,
+                    rank_score,
+                    run_id
                 )
-            else:
-                cur.execute(
-                    """
-                    INSERT INTO investigation_case (
-                        title,
-                        mmsi,
-                        anomaly_score,
-                        status,
-                        priority,
-                        summary,
-                        recommended_action
-                    )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    RETURNING id
-                    """,
-                    (
-                        case_record["title"],
-                        case_record["mmsi"],
-                        case_record["anomaly_score"],
-                        case_record["status"],
-                        case_record["priority"],
-                        case_record["summary"],
-                        case_record["recommended_action"],
-                    ),
+                VALUES (
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    ST_SetSRID(ST_MakePoint(%s, %s), 4326),
+                    %s,
+                    %s,
+                    %s,
+                    %s
                 )
+                RETURNING id
+                """,
+                (
+                    case_record["title"],
+                    case_record["mmsi"],
+                    case_record["anomaly_score"],
+                    case_record["confidence_score"],
+                    case_record["status"],
+                    case_record["priority"],
+                    case_record["summary"],
+                    case_record["recommended_action"],
+                    case_record["primary_lon"],
+                    case_record["primary_lat"],
+                    case_record["start_observed_at"],
+                    case_record["end_observed_at"],
+                    case_record["rank_score"],
+                    run_id,
+                ),
+            )
             case_id = cur.fetchone()[0]
             cases_created += 1
 
@@ -467,35 +494,80 @@ def build_cases():
                         evidence_type,
                         evidence_ref,
                         data,
-                        provenance
+                        provenance,
+                        observed_at,
+                        timeline_order
                     )
                     VALUES %s
                     """,
                     [
-                        (case_id, evidence_type, evidence_ref, data, provenance)
-                        for evidence_type, evidence_ref, data, provenance in case_record[
-                            "evidence_rows"
-                        ]
+                        (
+                            case_id,
+                            evidence_type,
+                            evidence_ref,
+                            data,
+                            provenance,
+                            observed_at,
+                            timeline_order,
+                        )
+                        for (
+                            evidence_type,
+                            evidence_ref,
+                            data,
+                            provenance,
+                            observed_at,
+                            timeline_order,
+                        ) in case_record["evidence_rows"]
                     ],
                 )
                 evidence_created += len(case_record["evidence_rows"])
 
         conn.commit()
 
-        top_case_columns = "title, anomaly_score, priority"
-        if has_confidence_score:
-            top_case_columns += ", confidence_score"
+        cur.execute(
+            """
+            UPDATE pipeline_run
+            SET status = %s,
+                finished_at = NOW(),
+                stats = %s
+            WHERE id = %s
+            """,
+            (
+                "completed",
+                Json(
+                    {
+                        "alerts_processed": alerts_processed,
+                        "cases_created": cases_created,
+                        "evidence_created": evidence_created,
+                    }
+                ),
+                run_id,
+            ),
+        )
+        conn.commit()
 
         cur.execute(
-            f"""
+            """
             SELECT
-                {top_case_columns},
-                (
-                    SELECT COUNT(*)
-                    FROM case_evidence
-                    WHERE case_id = investigation_case.id
-                ) AS evidence_count
-            FROM investigation_case
+                title,
+                anomaly_score,
+                priority,
+                confidence_score,
+                evidence_count
+            FROM (
+                SELECT
+                    title,
+                    anomaly_score,
+                    priority,
+                    confidence_score,
+                    (
+                        SELECT COUNT(*)
+                        FROM case_evidence
+                        WHERE case_id = investigation_case.id
+                    ) AS evidence_count,
+                    id
+                FROM investigation_case
+            ) ranked_cases
             ORDER BY anomaly_score DESC, id ASC
             LIMIT 10
             """
@@ -506,18 +578,42 @@ def build_cases():
         print("\nTop 10 cases:")
         print("-" * 100)
         for row in top_cases:
-            if has_confidence_score:
-                title, anomaly_score, priority, confidence_score, evidence_count = row
-                score_text = (
-                    f"Anomaly: {anomaly_score:.3f} | Confidence: {confidence_score:.3f}"
-                )
-            else:
-                title, anomaly_score, priority, evidence_count = row
-                score_text = f"Anomaly: {anomaly_score:.3f}"
+            title, anomaly_score, priority, confidence_score, evidence_count = row
+            score_text = (
+                f"Anomaly: {anomaly_score:.3f} | Confidence: {confidence_score:.3f}"
+            )
             print(
                 f"  {score_text} | Priority: {priority} | "
                 f"Evidence: {evidence_count} | {title}"
             )
+    except Exception:
+        conn.rollback()
+        if run_id is not None:
+            try:
+                cur.execute(
+                    """
+                    UPDATE pipeline_run
+                    SET status = %s,
+                        finished_at = NOW(),
+                        stats = %s
+                    WHERE id = %s
+                    """,
+                    (
+                        "failed",
+                        Json(
+                            {
+                                "alerts_processed": alerts_processed,
+                                "cases_created": cases_created,
+                                "evidence_created": evidence_created,
+                            }
+                        ),
+                        run_id,
+                    ),
+                )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+        raise
     finally:
         cur.close()
         conn.close()
