@@ -3,23 +3,29 @@ services:
   db:
     image: postgis/postgis:16-3.4
     environment:
-      POSTGRES_DB: cue2case
-      POSTGRES_USER: cue2case
-      POSTGRES_PASSWORD: cue2case_dev
+      POSTGRES_DB: ${POSTGRES_DB:-cue2case}
+      POSTGRES_USER: ${POSTGRES_USER:-cue2case}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cue2case_dev}
     ports:
       - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./db/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cue2case -d cue2case"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   api:
     build: ./api
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql://cue2case:cue2case_dev@db:5432/cue2case
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-cue2case}:${POSTGRES_PASSWORD:-cue2case_dev}@db:5432/${POSTGRES_DB:-cue2case}
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     volumes:
       - ./api:/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -30,6 +36,7 @@ services:
       - "3000:3000"
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
+      INTERNAL_API_URL: http://api:8000
     depends_on:
       - api
     volumes:
