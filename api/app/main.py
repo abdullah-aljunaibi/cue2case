@@ -5,6 +5,7 @@ import os
 from contextlib import contextmanager
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
+from uuid import UUID
 
 import psycopg2
 from fastapi import Body, FastAPI, HTTPException, Query
@@ -181,7 +182,7 @@ async def list_cases(
 
 
 @app.get("/cases/{case_id}")
-async def get_case(case_id: int):
+async def get_case(case_id: UUID):
     case_query = """
         SELECT
             ic.id,
