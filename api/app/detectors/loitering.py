@@ -62,22 +62,10 @@ def detect_loitering():
         was_stopped = False
 
         for i, pos in enumerate(positions):
-            sog = pos[4] if pos[4] is not None else 0
-            is_low = sog < LOW_SPEED_THRESHOLD
-
-            # Stop-start detection
-            if is_low and not was_stopped:
-                stop_start_count += 1
-                was_stopped = True
-            elif not is_low:
+            sog = pos[4]
+            if sog is None:
+                # Unknown speed breaks any active low-speed run.
                 was_stopped = False
-
-            if is_low:
-                if low_speed_start is None:
-                    low_speed_start = i
-                low_speed_positions.append(pos)
-            else:
-                # End of low-speed run — check if it qualifies
                 if low_speed_positions and low_speed_start is not None:
                     dwell_minutes = (low_speed_positions[-1][1] - low_speed_positions[0][1]).total_seconds() / 60.0
 
@@ -116,6 +104,62 @@ def detect_loitering():
 
                 low_speed_start = None
                 low_speed_positions = []
+                continue  # skip positions with unknown speed
+
+            is_low = sog < LOW_SPEED_THRESHOLD
+
+            # Stop-start detection
+            if is_low and not was_stopped:
+                stop_start_count += 1
+                was_stopped = True
+            elif not is_low:
+                was_stopped = False
+
+            if is_low:
+                if low_speed_start is None:
+                    low_speed_start = i
+                low_speed_positions.append(pos)
+                continue
+
+            # End of low-speed run — check if it qualifies
+            if low_speed_positions and low_speed_start is not None:
+                dwell_minutes = (low_speed_positions[-1][1] - low_speed_positions[0][1]).total_seconds() / 60.0
+
+                if dwell_minutes >= MIN_DWELL_MINUTES:
+                    # Calculate spatial spread
+                    center_lat = sum(p[3] for p in low_speed_positions) / len(low_speed_positions)
+                    center_lon = sum(p[2] for p in low_speed_positions) / len(low_speed_positions)
+                    max_spread = max(
+                        haversine_nm(center_lat, center_lon, p[3], p[2])
+                        for p in low_speed_positions
+                    )
+
+                    if max_spread < MAX_SPREAD_NM:
+                        severity = min(dwell_minutes / 480.0, 1.0)  # 8hr = 1.0
+                        alerts.append({
+                            'mmsi': mmsi,
+                            'alert_type': 'loitering',
+                            'severity': round(severity, 3),
+                            'observed_at': low_speed_positions[0][1],
+                            'lon': center_lon,
+                            'lat': center_lat,
+                            'details': {
+                                'sub_type': 'extended_dwell',
+                                'dwell_minutes': round(dwell_minutes, 1),
+                                'spread_nm': round(max_spread, 3),
+                                'position_count': len(low_speed_positions),
+                                'start_time': low_speed_positions[0][1].isoformat(),
+                                'end_time': low_speed_positions[-1][1].isoformat(),
+                            },
+                            'explanation': (
+                                f"Vessel {mmsi} loitered for {dwell_minutes:.0f} minutes "
+                                f"within {max_spread:.2f} nm radius near "
+                                f"({center_lat:.4f}, {center_lon:.4f})."
+                            )
+                        })
+
+            low_speed_start = None
+            low_speed_positions = []
 
         # Check final run
         if low_speed_positions and low_speed_start is not None:

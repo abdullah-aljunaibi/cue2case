@@ -1,7 +1,7 @@
 """Detector 1: Abnormal Port Approach.
 
-Flags vessels with sudden speed/heading changes or corridor deviation
-in the port approach area.
+Flags vessels in the port approach area for sudden speed, heading,
+or course changes, plus inbound headings outside the expected range.
 """
 
 import json
@@ -27,6 +27,9 @@ APPROACH_BBOX = {
 EXPECTED_INBOUND_HEADING_RANGE = (280, 360)  # degrees, roughly NW approach
 SPEED_CHANGE_THRESHOLD = 8.0  # knots change in 5 min
 HEADING_CHANGE_THRESHOLD = 90.0  # degrees change in 5 min
+COG_CHANGE_THRESHOLD = 60.0  # degrees change in 5 min while moving
+MIN_MOVING_SOG = 3.0  # knots
+MIN_HEADING_RANGE_SOG = 5.0  # knots
 TIME_WINDOW = timedelta(minutes=5)
 
 
@@ -36,6 +39,18 @@ def heading_diff(h1, h2):
         return None
     diff = abs(h1 - h2) % 360
     return min(diff, 360 - diff)
+
+
+def is_heading_in_expected_range(heading):
+    """Return True when heading falls within the expected inbound range."""
+    if heading is None:
+        return False
+
+    start, end = EXPECTED_INBOUND_HEADING_RANGE
+    if start <= end:
+        return start <= heading <= end
+    return heading >= start or heading <= end
+
 
 
 def detect_abnormal_approach():
@@ -131,6 +146,69 @@ def detect_abnormal_approach():
                             ),
                         }
                     )
+
+                if (
+                    prev[4] is not None
+                    and curr[4] is not None
+                    and prev[5] is not None
+                    and curr[5] is not None
+                    and prev[4] > MIN_MOVING_SOG
+                    and curr[4] > MIN_MOVING_SOG
+                ):
+                    cog_diff = heading_diff(prev[5], curr[5])
+                    if cog_diff is not None and cog_diff > COG_CHANGE_THRESHOLD:
+                        severity = min(cog_diff / 180.0, 1.0)
+                        alerts.append(
+                            {
+                                "mmsi": mmsi,
+                                "alert_type": "abnormal_approach",
+                                "severity": round(severity, 3),
+                                "observed_at": curr[1],
+                                "lon": curr[2],
+                                "lat": curr[3],
+                                "details": {
+                                    "sub_type": "cog_change",
+                                    "prev_cog": prev[5],
+                                    "curr_cog": curr[5],
+                                    "prev_sog": prev[4],
+                                    "curr_sog": curr[4],
+                                    "delta_cog": round(cog_diff, 2),
+                                    "time_delta_sec": time_diff.total_seconds(),
+                                },
+                                "explanation": (
+                                    f"Vessel {mmsi} changed course over ground by "
+                                    f"{cog_diff:.0f}° ({prev[5]:.0f}° → {curr[5]:.0f}°) "
+                                    f"while moving at {prev[4]:.1f}-{curr[4]:.1f} knots "
+                                    f"within {time_diff.total_seconds():.0f}s in port approach area."
+                                ),
+                            }
+                        )
+
+                if curr[6] is not None and curr[4] is not None and curr[4] > MIN_HEADING_RANGE_SOG:
+                    if not is_heading_in_expected_range(curr[6]):
+                        range_start, range_end = EXPECTED_INBOUND_HEADING_RANGE
+                        severity = min((curr[4] - MIN_HEADING_RANGE_SOG) / 10.0 + 0.4, 1.0)
+                        alerts.append(
+                            {
+                                "mmsi": mmsi,
+                                "alert_type": "abnormal_approach",
+                                "severity": round(severity, 3),
+                                "observed_at": curr[1],
+                                "lon": curr[2],
+                                "lat": curr[3],
+                                "details": {
+                                    "sub_type": "unexpected_heading",
+                                    "heading": curr[6],
+                                    "sog": curr[4],
+                                    "expected_inbound_heading_range": [range_start, range_end],
+                                },
+                                "explanation": (
+                                    f"Vessel {mmsi} reported heading {curr[6]:.0f}° at "
+                                    f"{curr[4]:.1f} knots, outside expected inbound range "
+                                    f"{range_start}°-{range_end}° in the port approach area."
+                                ),
+                            }
+                        )
 
         if alerts:
             from psycopg2.extras import execute_values
