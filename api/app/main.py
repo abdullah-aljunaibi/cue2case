@@ -157,6 +157,7 @@ async def list_cases(
             ic.title,
             ic.mmsi,
             ic.anomaly_score,
+            ic.confidence_score,
             ic.status,
             ic.priority,
             ic.summary,
@@ -189,6 +190,7 @@ async def get_case(case_id: UUID):
             ic.title,
             ic.mmsi,
             ic.anomaly_score,
+            ic.confidence_score,
             ic.status,
             ic.priority,
             ic.summary,
@@ -217,13 +219,15 @@ async def get_case(case_id: UUID):
         ORDER BY created_at ASC, id ASC
     """
 
+    case_id_str = str(case_id)
+
     with get_db_cursor() as cursor:
-        cursor.execute(case_query, [case_id])
+        cursor.execute(case_query, [case_id_str])
         case_row = cursor.fetchone()
         if not case_row:
             raise HTTPException(status_code=404, detail="Case not found")
 
-        cursor.execute(evidence_query, [case_id])
+        cursor.execute(evidence_query, [case_id_str])
         evidence_rows = cursor.fetchall()
 
     case_data = normalize_row(dict(case_row))
@@ -367,6 +371,7 @@ async def list_case_map_points(
             ic.id AS case_id,
             ic.title,
             ic.anomaly_score,
+            ic.confidence_score,
             ic.priority,
             ic.mmsi,
             v.vessel_name,

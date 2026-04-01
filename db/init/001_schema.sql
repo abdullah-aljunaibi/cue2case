@@ -63,7 +63,7 @@ CREATE INDEX idx_geofence_geom ON geofence USING GIST(geom);
 CREATE TABLE alert (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     mmsi VARCHAR(9) NOT NULL REFERENCES vessel(mmsi),
-    alert_type VARCHAR(50) NOT NULL CHECK (alert_type IN ('abnormal_approach', 'ais_silence', 'loitering', 'identity_inconsistency')),
+    alert_type VARCHAR(50) NOT NULL CHECK (alert_type IN ('abnormal_approach', 'ais_silence', 'loitering', 'kinematic_anomaly', 'identity_anomaly')),
     severity REAL NOT NULL CHECK (severity >= 0 AND severity <= 1),
     observed_at TIMESTAMPTZ NOT NULL,
     geom GEOMETRY(Point, 4326),
@@ -83,6 +83,7 @@ CREATE TABLE investigation_case (
     title VARCHAR(255) NOT NULL,
     mmsi VARCHAR(9) NOT NULL REFERENCES vessel(mmsi),
     anomaly_score REAL NOT NULL CHECK (anomaly_score >= 0 AND anomaly_score <= 1),
+    confidence_score REAL NOT NULL DEFAULT 0.5 CHECK (confidence_score >= 0 AND confidence_score <= 1),
     status VARCHAR(20) NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'in_review', 'escalated', 'resolved', 'dismissed')),
     priority INTEGER NOT NULL DEFAULT 0 CHECK (priority >= 0),
     summary TEXT,
