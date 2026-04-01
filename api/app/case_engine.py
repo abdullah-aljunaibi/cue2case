@@ -1,53 +1,55 @@
-"""Case Engine: groups vessel alerts into ranked investigation cases.
-
-Usage: python -m app.case_engine
-
-Builds one investigation case per vessel with alerts, computes a weighted
-anomaly score from alert severities, generates case summaries and
-recommended actions, and links source alerts as case evidence.
-"""
+"""Case Engine: clusters vessel alerts into incident-based investigation cases."""
 
 import json
 import os
 from collections import defaultdict
+from datetime import timedelta
 
 import psycopg2
-from psycopg2.extras import execute_values
+from psycopg2.extras import Json, execute_values
 
 DATABASE_URL = os.environ.get(
     "DATABASE_URL_SYNC",
     "postgresql://cue2case:cue2case_dev@localhost:5433/cue2case",
 )
 
+INCIDENT_GAP = timedelta(hours=2)
+MIN_SUSTAINED_DURATION = timedelta(minutes=30)
+MIN_CASE_SCORE = 0.05
+TIMELINE_EVENT_LIMIT = 5
+
 ALERT_WEIGHTS = {
-    "identity_inconsistency": 0.40,
+    "identity_anomaly": 0.40,
+    "kinematic_anomaly": 0.20,
     "abnormal_approach": 0.25,
-    "ais_silence": 0.20,
-    "loitering": 0.15,
+    "ais_silence": 0.10,
+    "loitering": 0.05,
 }
 
 RECOMMENDATIONS = {
-    "identity_inconsistency": (
-        "Verify vessel identity through cross-referencing IMO registry. "
-        "Check for MMSI spoofing or equipment malfunction."
+    "identity_anomaly": (
+        "Verify vessel identity through registry, AIS, and historical track cross-checks. "
+        "Investigate duplicate MMSI usage and confirm which broadcast source is legitimate."
+    ),
+    "kinematic_anomaly": (
+        "Review vessel motion replay for impossible jumps, GPS spikes, or implausible speed changes. "
+        "Validate sensor quality and compare against nearby track data."
     ),
     "abnormal_approach": (
         "Review vessel track replay for approach corridor compliance. "
         "Cross-reference with port authority approach instructions."
     ),
     "ais_silence": (
-        "Investigate gap period. Check if vessel was in port blind spot or "
-        "intentionally went dark. Request imagery for gap window."
+        "Investigate gap period. Check if vessel was in port blind spot or intentionally went dark. "
+        "Request imagery for the AIS silence window."
     ),
     "loitering": (
         "Check vessel purpose and authorization for extended anchorage. "
-        "Verify if vessel is awaiting berth assignment or exhibiting "
-        "suspicious behavior."
+        "Verify whether the vessel is awaiting berth assignment or exhibiting suspicious behavior."
     ),
 }
 
-DEFAULT_RECOMMENDATION = "Review vessel activity and alerts."
-MIN_CASE_SCORE = 0.05
+DEFAULT_RECOMMENDATION = "Review vessel activity, source alerts, and nearby operational context."
 
 
 def priority_for_score(anomaly_score):
@@ -59,110 +61,272 @@ def priority_for_score(anomaly_score):
     return 1
 
 
-def dominant_alert_type(max_severity_by_type):
-    """Choose the dominant alert type using weighted contribution first."""
+def normalize_details(details):
+    """Return alert details as a dictionary when possible."""
+    if isinstance(details, dict):
+        return details
+    if details is None:
+        return {}
+    if isinstance(details, str):
+        try:
+            parsed = json.loads(details)
+            return parsed if isinstance(parsed, dict) else {"raw": details}
+        except json.JSONDecodeError:
+            return {"raw": details}
+    return {"raw": details}
+
+
+def dominant_alert_type(max_severity_by_type, alert_counts):
+    """Choose the dominant alert type using weighted contribution, then count, then severity."""
     return max(
         max_severity_by_type,
         key=lambda alert_type: (
             max_severity_by_type[alert_type] * ALERT_WEIGHTS.get(alert_type, 0),
+            alert_counts.get(alert_type, 0),
             max_severity_by_type[alert_type],
             alert_type,
         ),
     )
 
 
-def build_case_record(mmsi, alerts_list, vessel_info):
-    """Build a case payload and evidence rows for a single vessel."""
+def cluster_alerts_by_incident(alerts_list):
+    """Cluster a vessel's alerts into incidents using a rolling time-gap threshold."""
+    if not alerts_list:
+        return []
+
+    ordered_alerts = sorted(
+        alerts_list,
+        key=lambda alert: (alert["observed_at"], alert["id"]),
+    )
+
+    incidents = [[ordered_alerts[0]]]
+    for alert in ordered_alerts[1:]:
+        previous_alert = incidents[-1][-1]
+        if alert["observed_at"] - previous_alert["observed_at"] <= INCIDENT_GAP:
+            incidents[-1].append(alert)
+        else:
+            incidents.append([alert])
+
+    return incidents
+
+
+def summarize_key_events(alerts_list):
+    """Build short incident timeline highlights from alerts."""
+    distinct_events = []
+    seen_signatures = set()
+
+    for alert in alerts_list:
+        timestamp = alert["observed_at"].strftime("%H:%M")
+        alert_type = alert["alert_type"].replace("_", " ")
+        details = alert["details"]
+
+        context_parts = []
+        zone_context = details.get("zone_context")
+        if zone_context:
+            context_parts.append(f"zone={zone_context}")
+
+        explanation = alert.get("explanation")
+        if explanation:
+            cleaned = " ".join(str(explanation).split())
+            if len(cleaned) > 100:
+                cleaned = f"{cleaned[:97]}..."
+            context_parts.append(cleaned)
+
+        event_text = f"{timestamp} {alert_type}"
+        if context_parts:
+            event_text = f"{event_text} ({'; '.join(context_parts)})"
+
+        signature = (alert["alert_type"], timestamp, tuple(context_parts))
+        if signature in seen_signatures:
+            continue
+        seen_signatures.add(signature)
+        distinct_events.append(event_text)
+
+        if len(distinct_events) >= TIMELINE_EVENT_LIMIT:
+            break
+
+    if len(alerts_list) > len(distinct_events):
+        distinct_events.append(f"+{len(alerts_list) - len(distinct_events)} more alerts")
+
+    return distinct_events
+
+
+def score_incident(alerts_list):
+    """Compute anomaly and confidence scores for an incident."""
     max_severity_by_type = {}
     alert_counts = defaultdict(int)
+    has_zone_context = False
 
     for alert in alerts_list:
         alert_type = alert["alert_type"]
         alert_counts[alert_type] += 1
+        max_severity_by_type[alert_type] = max(
+            max_severity_by_type.get(alert_type, 0.0),
+            float(alert["severity"]),
+        )
+        if alert["details"].get("zone_context"):
+            has_zone_context = True
 
-        current_max = max_severity_by_type.get(alert_type, 0)
-        if alert["severity"] > current_max:
-            max_severity_by_type[alert_type] = alert["severity"]
+    distinct_types = len(max_severity_by_type)
+    alert_count = len(alerts_list)
+    duration = alerts_list[-1]["observed_at"] - alerts_list[0]["observed_at"]
 
-    anomaly_score = round(
-        sum(
-            max_severity_by_type.get(alert_type, 0) * weight
-            for alert_type, weight in ALERT_WEIGHTS.items()
-        ),
-        4,
+    base_score = sum(
+        max_severity_by_type.get(alert_type, 0.0) * ALERT_WEIGHTS.get(alert_type, 0.0)
+        for alert_type in ALERT_WEIGHTS
     )
-    anomaly_score = min(max(anomaly_score, 0.0), 1.0)
-    if anomaly_score < MIN_CASE_SCORE:
+    corroboration_bonus = 0.1 * max(0, distinct_types - 1)
+    frequency_bonus = min(0.15, alert_count * 0.02)
+    anomaly_score = min(base_score + corroboration_bonus + frequency_bonus, 1.0)
+    anomaly_score = round(max(anomaly_score, 0.0), 4)
+
+    confidence_score = 0.5
+    if alert_count > 10:
+        confidence_score += 0.15
+    if distinct_types > 1:
+        confidence_score += 0.15
+    if duration > MIN_SUSTAINED_DURATION:
+        confidence_score += 0.1
+    if has_zone_context:
+        confidence_score += 0.1
+    confidence_score = round(min(confidence_score, 1.0), 4)
+
+    return {
+        "max_severity_by_type": max_severity_by_type,
+        "alert_counts": dict(alert_counts),
+        "base_score": round(base_score, 4),
+        "corroboration_bonus": round(corroboration_bonus, 4),
+        "frequency_bonus": round(frequency_bonus, 4),
+        "anomaly_score": anomaly_score,
+        "confidence_score": confidence_score,
+        "duration": duration,
+        "has_zone_context": has_zone_context,
+    }
+
+
+def build_case_record(mmsi, incident_index, alerts_list, vessel_info):
+    """Build a case payload and evidence rows for a single incident."""
+    incident_alerts = sorted(alerts_list, key=lambda alert: (alert["observed_at"], alert["id"]))
+    scores = score_incident(incident_alerts)
+    if scores["anomaly_score"] < MIN_CASE_SCORE:
         return None
 
-    dominant_type = dominant_alert_type(max_severity_by_type)
-    vessel_name = vessel_info.get(mmsi, {}).get("name") or "Unknown Vessel"
-    vessel_type = vessel_info.get(mmsi, {}).get("type")
+    dominant_type = dominant_alert_type(
+        scores["max_severity_by_type"],
+        scores["alert_counts"],
+    )
+    vessel_meta = vessel_info.get(mmsi, {})
+    vessel_name = vessel_meta.get("name") or "Unknown Vessel"
+    vessel_type = vessel_meta.get("type")
+    incident_start = incident_alerts[0]["observed_at"]
+    incident_end = incident_alerts[-1]["observed_at"]
 
-    title = f"{vessel_name} ({mmsi}) — {dominant_type.replace('_', ' ').title()}"
+    title = (
+        f"[{mmsi}] {vessel_name} — Incident at "
+        f"{incident_start.strftime('%H:%M')} ({dominant_type})"
+    )
 
-    ordered_types = [
-        alert_type
-        for alert_type, _ in sorted(
-            alert_counts.items(),
-            key=lambda item: (
-                -max_severity_by_type.get(item[0], 0),
-                -item[1],
-                item[0],
-            ),
-        )
-    ]
-    summary_parts = [
-        f"{alert_counts[alert_type]} {alert_type.replace('_', ' ')} alert(s)"
+    ordered_types = sorted(
+        scores["alert_counts"],
+        key=lambda alert_type: (
+            -(scores["max_severity_by_type"].get(alert_type, 0.0) * ALERT_WEIGHTS.get(alert_type, 0.0)),
+            -scores["alert_counts"][alert_type],
+            alert_type,
+        ),
+    )
+    type_summary = ", ".join(
+        f"{scores['alert_counts'][alert_type]} {alert_type.replace('_', ' ')}"
         for alert_type in ordered_types
-    ]
+    )
+
     vessel_label = f"{vessel_name} (MMSI: {mmsi})"
     if vessel_type:
         vessel_label = f"{vessel_label}, type {vessel_type}"
 
-    summary = (
-        f"Vessel {vessel_label} generated {len(alerts_list)} total alerts: "
-        f"{', '.join(summary_parts)}. Composite anomaly score: "
-        f"{anomaly_score:.3f}. Dominant concern: "
-        f"{dominant_type.replace('_', ' ')}."
-    )
-
-    evidence_rows = [
+    timeline_events = summarize_key_events(incident_alerts)
+    summary_lines = [
         (
-            "alert",
-            alert["id"],
-            json.dumps(
-                {
-                    "alert_type": alert["alert_type"],
-                    "severity": alert["severity"],
-                    "observed_at": alert["observed_at"].isoformat(),
-                    "location": {"lon": alert["lon"], "lat": alert["lat"]},
-                    "details": alert["details"],
-                    "explanation": alert["explanation"],
-                }
-            ),
-            f"Generated by {alert['alert_type']} detector",
-        )
-        for alert in alerts_list
+            f"Incident {incident_index} for vessel {vessel_label} spans "
+            f"{incident_start.isoformat()} to {incident_end.isoformat()} "
+            f"({scores['duration']})."
+        ),
+        (
+            f"Observed {len(incident_alerts)} alert(s) across {len(scores['alert_counts'])} detector type(s): "
+            f"{type_summary}. Dominant concern: {dominant_type.replace('_', ' ')}."
+        ),
+        (
+            f"Anomaly score {scores['anomaly_score']:.3f} "
+            f"(base {scores['base_score']:.3f} + corroboration {scores['corroboration_bonus']:.3f} "
+            f"+ frequency {scores['frequency_bonus']:.3f}); "
+            f"confidence score {scores['confidence_score']:.3f}."
+        ),
+        "Evidence timeline: " + " -> ".join(timeline_events),
     ]
+    if scores["has_zone_context"]:
+        summary_lines.append("Geofence context present in incident evidence.")
+    summary = " ".join(summary_lines)
+
+    evidence_rows = []
+    for order_index, alert in enumerate(incident_alerts, start=1):
+        evidence_rows.append(
+            (
+                "alert",
+                alert["id"],
+                Json(
+                    {
+                        "alert_type": alert["alert_type"],
+                        "severity": alert["severity"],
+                        "observed_at": alert["observed_at"].isoformat(),
+                        "location": {"lon": alert["lon"], "lat": alert["lat"]},
+                        "details": alert["details"],
+                        "explanation": alert["explanation"],
+                        "incident_index": incident_index,
+                        "timeline_order": order_index,
+                        "anomaly_score": scores["anomaly_score"],
+                        "confidence_score": scores["confidence_score"],
+                    }
+                ),
+                (
+                    f"Incident {incident_index} evidence #{order_index}: "
+                    f"{alert['alert_type']} at {alert['observed_at'].isoformat()}"
+                ),
+            )
+        )
 
     return {
         "mmsi": mmsi,
         "title": title,
-        "anomaly_score": anomaly_score,
+        "anomaly_score": scores["anomaly_score"],
+        "confidence_score": scores["confidence_score"],
         "status": "new",
-        "priority": priority_for_score(anomaly_score),
+        "priority": priority_for_score(scores["anomaly_score"]),
         "summary": summary,
         "recommended_action": RECOMMENDATIONS.get(
             dominant_type,
             DEFAULT_RECOMMENDATION,
         ),
         "evidence_rows": evidence_rows,
+        "incident_start": incident_start,
     }
 
 
+def table_has_column(cur, table_name, column_name):
+    """Return whether a table currently has a named column."""
+    cur.execute(
+        """
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = %s
+          AND column_name = %s
+        """,
+        (table_name, column_name),
+    )
+    return cur.fetchone() is not None
+
+
 def build_cases():
-    """Build investigation cases from alerts."""
+    """Build investigation cases from alerts using temporal incident clustering."""
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
 
@@ -201,7 +365,7 @@ def build_cases():
                     "observed_at": row[4],
                     "lon": row[5],
                     "lat": row[6],
-                    "details": row[7],
+                    "details": normalize_details(row[7]),
                     "explanation": row[8],
                 }
             )
@@ -214,41 +378,83 @@ def build_cases():
 
         case_records = []
         for mmsi, alerts_list in vessel_alerts.items():
-            case_record = build_case_record(mmsi, alerts_list, vessel_info)
-            if case_record is not None:
-                case_records.append(case_record)
+            incidents = cluster_alerts_by_incident(alerts_list)
+            for incident_index, incident_alerts in enumerate(incidents, start=1):
+                case_record = build_case_record(
+                    mmsi,
+                    incident_index,
+                    incident_alerts,
+                    vessel_info,
+                )
+                if case_record is not None:
+                    case_records.append(case_record)
 
         case_records.sort(
-            key=lambda record: (-record["anomaly_score"], str(record["mmsi"]))
+            key=lambda record: (
+                -record["anomaly_score"],
+                -record["confidence_score"],
+                str(record["mmsi"]),
+                record["incident_start"],
+            )
         )
+
+        has_confidence_score = table_has_column(cur, "investigation_case", "confidence_score")
 
         cases_created = 0
         evidence_created = 0
         for case_record in case_records:
-            cur.execute(
-                """
-                INSERT INTO investigation_case (
-                    title,
-                    mmsi,
-                    anomaly_score,
-                    status,
-                    priority,
-                    summary,
-                    recommended_action
+            if has_confidence_score:
+                cur.execute(
+                    """
+                    INSERT INTO investigation_case (
+                        title,
+                        mmsi,
+                        anomaly_score,
+                        confidence_score,
+                        status,
+                        priority,
+                        summary,
+                        recommended_action
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                    """,
+                    (
+                        case_record["title"],
+                        case_record["mmsi"],
+                        case_record["anomaly_score"],
+                        case_record["confidence_score"],
+                        case_record["status"],
+                        case_record["priority"],
+                        case_record["summary"],
+                        case_record["recommended_action"],
+                    ),
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                RETURNING id
-                """,
-                (
-                    case_record["title"],
-                    case_record["mmsi"],
-                    case_record["anomaly_score"],
-                    case_record["status"],
-                    case_record["priority"],
-                    case_record["summary"],
-                    case_record["recommended_action"],
-                ),
-            )
+            else:
+                cur.execute(
+                    """
+                    INSERT INTO investigation_case (
+                        title,
+                        mmsi,
+                        anomaly_score,
+                        status,
+                        priority,
+                        summary,
+                        recommended_action
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                    """,
+                    (
+                        case_record["title"],
+                        case_record["mmsi"],
+                        case_record["anomaly_score"],
+                        case_record["status"],
+                        case_record["priority"],
+                        case_record["summary"],
+                        case_record["recommended_action"],
+                    ),
+                )
             case_id = cur.fetchone()[0]
             cases_created += 1
 
@@ -276,12 +482,14 @@ def build_cases():
 
         conn.commit()
 
+        top_case_columns = "title, anomaly_score, priority"
+        if has_confidence_score:
+            top_case_columns += ", confidence_score"
+
         cur.execute(
-            """
+            f"""
             SELECT
-                title,
-                anomaly_score,
-                priority,
+                {top_case_columns},
                 (
                     SELECT COUNT(*)
                     FROM case_evidence
@@ -296,10 +504,18 @@ def build_cases():
 
         print(f"\nCreated {cases_created} cases with {evidence_created} evidence links.")
         print("\nTop 10 cases:")
-        print("-" * 80)
-        for title, anomaly_score, priority, evidence_count in top_cases:
+        print("-" * 100)
+        for row in top_cases:
+            if has_confidence_score:
+                title, anomaly_score, priority, confidence_score, evidence_count = row
+                score_text = (
+                    f"Anomaly: {anomaly_score:.3f} | Confidence: {confidence_score:.3f}"
+                )
+            else:
+                title, anomaly_score, priority, evidence_count = row
+                score_text = f"Anomaly: {anomaly_score:.3f}"
             print(
-                f"  Score: {anomaly_score:.3f} | Priority: {priority} | "
+                f"  {score_text} | Priority: {priority} | "
                 f"Evidence: {evidence_count} | {title}"
             )
     finally:
