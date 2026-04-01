@@ -23,8 +23,7 @@ DATABASE_URL = os.environ.get(
 def parse_float(val):
     """Parse float, return None for empty/invalid."""
     try:
-        v = float(val)
-        return v if v != 511.0 else None  # 511 = heading not available in AIS
+        return float(val)
     except (ValueError, TypeError):
         return None
 
@@ -67,15 +66,24 @@ def ingest_csv(filepath: str):
             # Parse position
             lat = parse_float(row['LAT'])
             lon = parse_float(row['LON'])
-            if lat is None or lon is None:
+            if (
+                lat is None or lon is None
+                or not (-90 <= lat <= 90)
+                or not (-180 <= lon <= 180)
+            ):
                 continue
 
             sog = parse_float(row['SOG'])
+            if sog is not None and (sog < 0 or sog >= 102.3):
+                sog = None
+
             cog_val = parse_float(row['COG'])
-            # COG must be 0-360
             if cog_val is not None and (cog_val < 0 or cog_val >= 360):
                 cog_val = None
+
             heading_val = parse_float(row['Heading'])
+            if heading_val is not None and heading_val == 511.0:
+                heading_val = None
             if heading_val is not None and (heading_val < 0 or heading_val >= 360):
                 heading_val = None
             nav_status = parse_int(row.get('Status'))
