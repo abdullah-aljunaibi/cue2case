@@ -36,7 +36,7 @@ type AuditItem = {
   event?: string | null;
   actor?: string | null;
   user?: string | null;
-  details?: string | null;
+  details?: unknown;
   summary?: string | null;
   created_at?: string | null;
   timestamp?: string | null;
@@ -187,13 +187,16 @@ async function patchCase(caseId: string, body: Record<string, unknown>) {
   }
 }
 
-async function postCaseNote(caseId: string, body: string) {
+async function postCaseNote(caseId: string, content: string) {
   const response = await fetch(`${apiUrl}/cases/${encodeURIComponent(caseId)}/notes`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ body }),
+    body: JSON.stringify({
+      author: 'abdullah',
+      content,
+    }),
   });
 
   if (!response.ok) {
@@ -218,7 +221,26 @@ function auditActor(entry: AuditItem) {
 }
 
 function auditDetail(entry: AuditItem) {
-  return entry.details || entry.summary || 'No additional detail provided.';
+  if (typeof entry.details === 'string') {
+    const details = entry.details.trim();
+    if (details.length > 0) {
+      return details;
+    }
+  }
+
+  if (Array.isArray(entry.details) || (entry.details && typeof entry.details === 'object')) {
+    try {
+      return JSON.stringify(entry.details, null, 2);
+    } catch {
+      return String(entry.summary || 'No additional detail provided.');
+    }
+  }
+
+  if (entry.details != null) {
+    return String(entry.details);
+  }
+
+  return entry.summary || 'No additional detail provided.';
 }
 
 export default async function CaseDetailPage({
@@ -259,13 +281,13 @@ export default async function CaseDetailPage({
   async function createNote(formData: FormData) {
     'use server';
 
-    const body = String(formData.get('body') || '').trim();
+    const content = String(formData.get('body') || '').trim();
 
-    if (!body) {
+    if (!content) {
       return;
     }
 
-    await postCaseNote(caseId, body);
+    await postCaseNote(caseId, content);
     revalidatePath(`/cases/${caseId}`);
   }
 
@@ -819,9 +841,19 @@ export default async function CaseDetailPage({
                               <div style={{ color: '#334155', fontSize: '0.88rem', marginBottom: '0.2rem' }}>
                                 Actor: {auditActor(entry)}
                               </div>
-                              <div style={{ color: '#475569', fontSize: '0.88rem', lineHeight: 1.5 }}>
+                              <pre
+                                style={{
+                                  margin: 0,
+                                  color: '#475569',
+                                  fontSize: '0.88rem',
+                                  lineHeight: 1.5,
+                                  whiteSpace: 'pre-wrap',
+                                  wordBreak: 'break-word',
+                                  fontFamily: 'inherit',
+                                }}
+                              >
                                 {auditDetail(entry)}
-                              </div>
+                              </pre>
                             </article>
                           ))}
                         </div>
