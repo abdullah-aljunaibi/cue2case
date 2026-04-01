@@ -12,21 +12,27 @@ from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from psycopg2.extras import RealDictCursor
 
+from api.app.routers.cases import router as cases_router
+
 app = FastAPI(title="Cue2Case API", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["*"],  # Allow all origins for demo
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(cases_router)
 
 AVAILABLE_ROUTES = [
     "/",
     "/health",
     "/cases",
     "/cases/{case_id}",
+    "/cases/{case_id}/notes",
+    "/cases/{case_id}/audit",
     "/alerts",
     "/vessels/{mmsi}",
     "/tracks/{mmsi}",
@@ -129,110 +135,6 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "cue2case-api"}
-
-
-@app.get("/cases")
-async def list_cases(
-    limit: int = Query(default=50, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
-    status: Optional[str] = None,
-    min_score: Optional[float] = None,
-):
-    filters: List[str] = []
-    params: List[Any] = []
-
-    if status:
-        filters.append("ic.status = %s")
-        params.append(status)
-    if min_score is not None:
-        filters.append("ic.anomaly_score >= %s")
-        params.append(min_score)
-
-    where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
-    params.extend([limit, offset])
-
-    query = f"""
-        SELECT
-            ic.id,
-            ic.title,
-            ic.mmsi,
-            ic.anomaly_score,
-            ic.confidence_score,
-            ic.status,
-            ic.priority,
-            ic.summary,
-            ic.recommended_action,
-            ic.created_at,
-            ic.updated_at,
-            v.vessel_name,
-            COUNT(ce.id) AS evidence_count
-        FROM investigation_case ic
-        LEFT JOIN vessel v ON v.mmsi = ic.mmsi
-        LEFT JOIN case_evidence ce ON ce.case_id = ic.id
-        {where_clause}
-        GROUP BY ic.id, v.vessel_name
-        ORDER BY ic.anomaly_score DESC, ic.created_at DESC
-        LIMIT %s OFFSET %s
-    """
-
-    with get_db_cursor() as cursor:
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-
-    return [normalize_row(dict(row)) for row in rows]
-
-
-@app.get("/cases/{case_id}")
-async def get_case(case_id: UUID):
-    case_query = """
-        SELECT
-            ic.id,
-            ic.title,
-            ic.mmsi,
-            ic.anomaly_score,
-            ic.confidence_score,
-            ic.status,
-            ic.priority,
-            ic.summary,
-            ic.recommended_action,
-            ic.created_at,
-            ic.updated_at,
-            v.vessel_name,
-            v.vessel_type,
-            v.length,
-            v.width
-        FROM investigation_case ic
-        LEFT JOIN vessel v ON v.mmsi = ic.mmsi
-        WHERE ic.id = %s
-    """
-    evidence_query = """
-        SELECT
-            id,
-            case_id,
-            evidence_type,
-            evidence_ref,
-            data,
-            provenance,
-            created_at
-        FROM case_evidence
-        WHERE case_id = %s
-        ORDER BY created_at ASC, id ASC
-    """
-
-    case_id_str = str(case_id)
-
-    with get_db_cursor() as cursor:
-        cursor.execute(case_query, [case_id_str])
-        case_row = cursor.fetchone()
-        if not case_row:
-            raise HTTPException(status_code=404, detail="Case not found")
-
-        cursor.execute(evidence_query, [case_id_str])
-        evidence_rows = cursor.fetchall()
-
-    case_data = normalize_row(dict(case_row))
-    case_data["evidence"] = [normalize_row(dict(row)) for row in evidence_rows]
-    return case_data
 
 
 @app.get("/alerts")
