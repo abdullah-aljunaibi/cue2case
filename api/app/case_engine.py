@@ -76,6 +76,16 @@ def normalize_details(details):
     return {"raw": details}
 
 
+def case_signature(mmsi, title, start_observed_at, end_observed_at):
+    """Build a deterministic signature that survives case rebuilds."""
+    return (
+        str(mmsi),
+        title or "",
+        start_observed_at.isoformat() if start_observed_at is not None else None,
+        end_observed_at.isoformat() if end_observed_at is not None else None,
+    )
+
+
 def dominant_alert_type(max_severity_by_type, alert_counts):
     """Choose the dominant alert type using weighted contribution, then count, then severity."""
     return max(
@@ -324,6 +334,7 @@ def build_case_record(mmsi, incident_index, alerts_list, vessel_info):
         "anomaly_score": scores["anomaly_score"],
         "confidence_score": scores["confidence_score"],
         "status": "new",
+        "assigned_to": None,
         "priority": priority_for_score(scores["anomaly_score"]),
         "summary": summary,
         "recommended_action": RECOMMENDATIONS.get(
@@ -338,6 +349,7 @@ def build_case_record(mmsi, incident_index, alerts_list, vessel_info):
         "primary_lon": primary_alert["lon"],
         "primary_lat": primary_alert["lat"],
         "rank_score": rank_score,
+        "signature": case_signature(mmsi, title, incident_start, incident_end),
     }
 
 
@@ -362,6 +374,48 @@ def build_cases():
         run_id = cur.fetchone()[0]
         conn.commit()
 
+        cur.execute(
+            """
+            SELECT
+                id,
+                mmsi,
+                title,
+                start_observed_at,
+                end_observed_at,
+                status,
+                assigned_to
+            FROM investigation_case
+            """
+        )
+        existing_cases = cur.fetchall()
+
+        existing_case_ids = [row[0] for row in existing_cases]
+        existing_notes_by_case_id = defaultdict(list)
+        if existing_case_ids:
+            cur.execute(
+                """
+                SELECT id, case_id, author, content, created_at
+                FROM analyst_note
+                WHERE case_id = ANY(%s)
+                ORDER BY created_at ASC, id ASC
+                """,
+                (existing_case_ids,),
+            )
+            for note_row in cur.fetchall():
+                existing_notes_by_case_id[note_row[1]].append(note_row)
+
+        preserved_cases_by_signature = {}
+        for row in existing_cases:
+            case_id, mmsi, title, start_observed_at, end_observed_at, status, assigned_to = row
+            signature = case_signature(mmsi, title, start_observed_at, end_observed_at)
+            preserved_cases_by_signature[signature] = {
+                "status": status,
+                "assigned_to": assigned_to,
+                "notes": existing_notes_by_case_id.get(case_id, []),
+            }
+
+        if existing_case_ids:
+            cur.execute("DELETE FROM analyst_note WHERE case_id = ANY(%s)", (existing_case_ids,))
         cur.execute("DELETE FROM case_evidence")
         cur.execute("DELETE FROM investigation_case")
         conn.commit()
@@ -419,6 +473,10 @@ def build_cases():
                     vessel_info,
                 )
                 if case_record is not None:
+                    preserved_case = preserved_cases_by_signature.get(case_record["signature"])
+                    if preserved_case is not None:
+                        case_record["status"] = preserved_case["status"] or case_record["status"]
+                        case_record["assigned_to"] = preserved_case["assigned_to"]
                     case_records.append(case_record)
 
         case_records.sort(
@@ -446,6 +504,7 @@ def build_cases():
                     start_observed_at,
                     end_observed_at,
                     rank_score,
+                    assigned_to,
                     run_id
                 )
                 VALUES (
@@ -458,6 +517,7 @@ def build_cases():
                     %s,
                     %s,
                     ST_SetSRID(ST_MakePoint(%s, %s), 4326),
+                    %s,
                     %s,
                     %s,
                     %s,
@@ -479,11 +539,36 @@ def build_cases():
                     case_record["start_observed_at"],
                     case_record["end_observed_at"],
                     case_record["rank_score"],
+                    case_record["assigned_to"],
                     run_id,
                 ),
             )
             case_id = cur.fetchone()[0]
             cases_created += 1
+
+            preserved_case = preserved_cases_by_signature.get(case_record["signature"])
+            if preserved_case and preserved_case["notes"]:
+                execute_values(
+                    cur,
+                    """
+                    INSERT INTO analyst_note (
+                        case_id,
+                        author,
+                        content,
+                        created_at
+                    )
+                    VALUES %s
+                    """,
+                    [
+                        (
+                            case_id,
+                            author,
+                            content,
+                            created_at,
+                        )
+                        for (_, _, author, content, created_at) in preserved_case["notes"]
+                    ],
+                )
 
             if case_record["evidence_rows"]:
                 execute_values(
