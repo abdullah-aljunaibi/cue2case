@@ -6,7 +6,11 @@ import 'leaflet/dist/leaflet.css';
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const apiUrl =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
+    ? 'https://cue2case-api.bxb-om.com'
+    : 'http://localhost:8000');
 
 type MapCaseItem = {
   case_id?: string | number | null;
