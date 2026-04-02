@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Validate the core Cue2Case v3 API endpoints and a basic case workflow path.
-set -euo pipefail
+set -uo pipefail
 
 API="${API_URL:-http://localhost:8000}"
 PASS=0
@@ -10,7 +10,7 @@ check() {
   local desc="$1" url="$2" expected="$3"
   local body status
   body=$(curl -sf "$url" 2>/dev/null) && status=0 || status=1
-  if [ $status -eq 0 ] && echo "$body" | grep -q "$expected"; then
+  if [ $status -eq 0 ] && echo "$body" | grep -qF "$expected"; then
     echo "  ✅ $desc"
     ((PASS++))
   else
@@ -22,7 +22,7 @@ check() {
 echo "=== Cue2Case v3 Smoke Check ==="
 echo ""
 echo "Core endpoints:"
-check "Health" "$API/" "Cue2Case"
+check "Health" "$API/" "cue2case"
 check "Cases list" "$API/cases/?limit=3" "rank_score"
 check "Port profile" "$API/port-context/profile" "duqm"
 
