@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS operational_zone (
             'critical'
         )
     ),
-    geom GEOMETRY(Polygon, 4326) NOT NULL,
+    geom GEOMETRY(Polygon, 4326) NOT NULL CHECK (ST_IsValid(geom)),
     label_en VARCHAR(255),
     label_ar VARCHAR(255),
     sensitivity INTEGER DEFAULT 1 CHECK (sensitivity >= 1 AND sensitivity <= 5),
@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS approach_corridor (
     name VARCHAR(255) NOT NULL,
     expected_heading_min REAL NOT NULL CHECK (expected_heading_min >= 0 AND expected_heading_min < 360),
     expected_heading_max REAL NOT NULL CHECK (expected_heading_max >= 0 AND expected_heading_max < 360),
-    geom GEOMETRY(Polygon, 4326) NOT NULL,
+    geom GEOMETRY(Polygon, 4326) NOT NULL CHECK (ST_IsValid(geom)),
     label_en VARCHAR(255),
     label_ar VARCHAR(255),
     metadata JSONB NOT NULL DEFAULT '{}',
@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS critical_area (
     area_type VARCHAR(50) NOT NULL CHECK (
         area_type IN ('government_berth', 'military', 'energy', 'environmental', 'vts_monitored')
     ),
-    geom GEOMETRY(Polygon, 4326) NOT NULL,
+    geom GEOMETRY(Polygon, 4326) NOT NULL CHECK (ST_IsValid(geom)),
     sensitivity INTEGER DEFAULT 3 CHECK (sensitivity >= 1 AND sensitivity <= 5),
     label_en VARCHAR(255),
     label_ar VARCHAR(255),
@@ -76,7 +76,16 @@ BEGIN
     SELECT 1 FROM information_schema.columns
     WHERE table_name = 'investigation_case' AND column_name = 'zone_context'
   ) THEN
-    ALTER TABLE investigation_case ADD COLUMN zone_context JSONB DEFAULT '{}';
+    ALTER TABLE investigation_case
+    ADD COLUMN zone_context JSONB NOT NULL DEFAULT '{}';
+  ELSE
+    UPDATE investigation_case
+    SET zone_context = '{}'
+    WHERE zone_context IS NULL;
+
+    ALTER TABLE investigation_case
+    ALTER COLUMN zone_context SET DEFAULT '{}',
+    ALTER COLUMN zone_context SET NOT NULL;
   END IF;
 END
 $$;

@@ -3,7 +3,7 @@ CREATE EXTENSION IF NOT EXISTS postgis;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Vessel identity
-CREATE TABLE vessel (
+CREATE TABLE IF NOT EXISTS vessel (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     mmsi VARCHAR(9) NOT NULL CHECK (mmsi ~ '^[0-9]{9}$'),
     vessel_name VARCHAR(255),
@@ -15,7 +15,7 @@ CREATE TABLE vessel (
 );
 
 -- Raw AIS positions
-CREATE TABLE ais_position (
+CREATE TABLE IF NOT EXISTS ais_position (
     id BIGSERIAL PRIMARY KEY,
     mmsi VARCHAR(9) NOT NULL REFERENCES vessel(mmsi),
     observed_at TIMESTAMPTZ NOT NULL,
@@ -27,12 +27,13 @@ CREATE TABLE ais_position (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_ais_position_mmsi ON ais_position(mmsi);
-CREATE INDEX idx_ais_position_observed_at ON ais_position(observed_at);
-CREATE INDEX idx_ais_position_geom ON ais_position USING GIST(geom);
+CREATE INDEX IF NOT EXISTS idx_ais_position_mmsi ON ais_position(mmsi);
+CREATE INDEX IF NOT EXISTS idx_ais_position_observed_at ON ais_position(observed_at);
+CREATE INDEX IF NOT EXISTS idx_ais_position_geom ON ais_position USING GIST(geom);
+CREATE INDEX IF NOT EXISTS idx_ais_position_mmsi_observed ON ais_position (mmsi, observed_at, id);
 
 -- Track segments
-CREATE TABLE track_segment (
+CREATE TABLE IF NOT EXISTS track_segment (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     mmsi VARCHAR(9) NOT NULL REFERENCES vessel(mmsi),
     start_time TIMESTAMPTZ NOT NULL,
@@ -41,15 +42,32 @@ CREATE TABLE track_segment (
     point_count INTEGER CHECK (point_count >= 0),
     avg_sog REAL CHECK (avg_sog >= 0),
     max_sog REAL CHECK (max_sog >= 0),
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    CHECK (end_time >= start_time)
 );
 
-CREATE INDEX idx_track_segment_mmsi ON track_segment(mmsi);
-CREATE INDEX idx_track_segment_geom ON track_segment USING GIST(geom);
-CREATE INDEX idx_track_segment_time ON track_segment(start_time, end_time);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'track_segment_time_order_check'
+          AND conrelid = 'track_segment'::regclass
+    ) THEN
+        ALTER TABLE track_segment
+        ADD CONSTRAINT track_segment_time_order_check
+        CHECK (end_time >= start_time);
+    END IF;
+END
+$$;
+
+CREATE INDEX IF NOT EXISTS idx_track_segment_mmsi ON track_segment(mmsi);
+CREATE INDEX IF NOT EXISTS idx_track_segment_geom ON track_segment USING GIST(geom);
+CREATE INDEX IF NOT EXISTS idx_track_segment_time ON track_segment(start_time, end_time);
+CREATE INDEX IF NOT EXISTS idx_track_segment_mmsi_start ON track_segment (mmsi, start_time DESC, id DESC);
 
 -- Geofences
-CREATE TABLE geofence (
+CREATE TABLE IF NOT EXISTS geofence (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(255) NOT NULL,
     zone_type VARCHAR(50) NOT NULL CHECK (zone_type IN ('approach', 'anchorage', 'restricted', 'harbor')),
@@ -57,10 +75,10 @@ CREATE TABLE geofence (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_geofence_geom ON geofence USING GIST(geom);
+CREATE INDEX IF NOT EXISTS idx_geofence_geom ON geofence USING GIST(geom);
 
 -- Anomaly alerts
-CREATE TABLE alert (
+CREATE TABLE IF NOT EXISTS alert (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     mmsi VARCHAR(9) NOT NULL REFERENCES vessel(mmsi),
     alert_type VARCHAR(50) NOT NULL CHECK (alert_type IN ('abnormal_approach', 'ais_silence', 'loitering', 'kinematic_anomaly', 'identity_anomaly')),
@@ -72,18 +90,19 @@ CREATE TABLE alert (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_alert_mmsi ON alert(mmsi);
-CREATE INDEX idx_alert_type ON alert(alert_type);
-CREATE INDEX idx_alert_severity ON alert(severity DESC);
-CREATE INDEX idx_alert_observed_at ON alert(observed_at);
+CREATE INDEX IF NOT EXISTS idx_alert_mmsi ON alert(mmsi);
+CREATE INDEX IF NOT EXISTS idx_alert_type ON alert(alert_type);
+CREATE INDEX IF NOT EXISTS idx_alert_severity ON alert(severity DESC);
+CREATE INDEX IF NOT EXISTS idx_alert_observed_at ON alert(observed_at);
 
 -- Investigation cases
-CREATE TABLE investigation_case (
+CREATE TABLE IF NOT EXISTS investigation_case (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     title VARCHAR(255) NOT NULL,
     mmsi VARCHAR(9) NOT NULL REFERENCES vessel(mmsi),
     anomaly_score REAL NOT NULL CHECK (anomaly_score >= 0 AND anomaly_score <= 1),
     confidence_score REAL NOT NULL DEFAULT 0.5 CHECK (confidence_score >= 0 AND confidence_score <= 1),
+    score_breakdown JSONB,
     status VARCHAR(20) NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'in_review', 'escalated', 'resolved', 'dismissed')),
     priority INTEGER NOT NULL DEFAULT 0 CHECK (priority >= 0),
     summary TEXT,
@@ -93,11 +112,22 @@ CREATE TABLE investigation_case (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_case_status ON investigation_case(status);
-CREATE INDEX idx_case_score ON investigation_case(anomaly_score DESC);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'investigation_case' AND column_name = 'score_breakdown'
+    ) THEN
+        ALTER TABLE investigation_case ADD COLUMN score_breakdown JSONB;
+    END IF;
+END
+$$;
+
+CREATE INDEX IF NOT EXISTS idx_case_status ON investigation_case(status);
+CREATE INDEX IF NOT EXISTS idx_case_score ON investigation_case(anomaly_score DESC);
 
 -- Case evidence
-CREATE TABLE case_evidence (
+CREATE TABLE IF NOT EXISTS case_evidence (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     case_id UUID NOT NULL REFERENCES investigation_case(id),
     evidence_type VARCHAR(50) NOT NULL CHECK (evidence_type IN ('alert', 'track', 'external_cue', 'screenshot')),
@@ -107,10 +137,10 @@ CREATE TABLE case_evidence (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_case_evidence_case_id ON case_evidence(case_id);
+CREATE INDEX IF NOT EXISTS idx_case_evidence_case_id ON case_evidence(case_id);
 
 -- External cues
-CREATE TABLE external_cue (
+CREATE TABLE IF NOT EXISTS external_cue (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     source VARCHAR(255) NOT NULL,
     cue_type VARCHAR(50) NOT NULL CHECK (cue_type IN ('rf_detection', 'imagery', 'tip', 'other')),
@@ -121,11 +151,11 @@ CREATE TABLE external_cue (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_external_cue_geom ON external_cue USING GIST(geom);
-CREATE INDEX idx_external_cue_case_id ON external_cue(case_id);
+CREATE INDEX IF NOT EXISTS idx_external_cue_geom ON external_cue USING GIST(geom);
+CREATE INDEX IF NOT EXISTS idx_external_cue_case_id ON external_cue(case_id);
 
 -- Analyst notes
-CREATE TABLE analyst_note (
+CREATE TABLE IF NOT EXISTS analyst_note (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     case_id UUID NOT NULL REFERENCES investigation_case(id),
     author VARCHAR(255) NOT NULL,
@@ -133,10 +163,10 @@ CREATE TABLE analyst_note (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_analyst_note_case_id ON analyst_note(case_id);
+CREATE INDEX IF NOT EXISTS idx_analyst_note_case_id ON analyst_note(case_id);
 
 -- Audit log (immutable — enforced by trigger)
-CREATE TABLE audit_log (
+CREATE TABLE IF NOT EXISTS audit_log (
     id BIGSERIAL PRIMARY KEY,
     action VARCHAR(50) NOT NULL,
     entity_type VARCHAR(50) NOT NULL,
@@ -146,7 +176,7 @@ CREATE TABLE audit_log (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_audit_log_entity ON audit_log(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log(entity_type, entity_id);
 
 -- Immutability trigger for audit log
 CREATE OR REPLACE FUNCTION prevent_audit_log_mutation()
@@ -156,12 +186,23 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trg_audit_log_no_update
-BEFORE UPDATE OR DELETE ON audit_log
-FOR EACH ROW EXECUTE FUNCTION prevent_audit_log_mutation();
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'trg_audit_log_no_update'
+          AND tgrelid = 'audit_log'::regclass
+    ) THEN
+        CREATE TRIGGER trg_audit_log_no_update
+        BEFORE UPDATE OR DELETE ON audit_log
+        FOR EACH ROW EXECUTE FUNCTION prevent_audit_log_mutation();
+    END IF;
+END
+$$;
 
 -- RBAC users
-CREATE TABLE app_user (
+CREATE TABLE IF NOT EXISTS app_user (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     username VARCHAR(255) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
@@ -178,6 +219,17 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trg_investigation_case_updated_at
-BEFORE UPDATE ON investigation_case
-FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'trg_investigation_case_updated_at'
+          AND tgrelid = 'investigation_case'::regclass
+    ) THEN
+        CREATE TRIGGER trg_investigation_case_updated_at
+        BEFORE UPDATE ON investigation_case
+        FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+    END IF;
+END
+$$;
