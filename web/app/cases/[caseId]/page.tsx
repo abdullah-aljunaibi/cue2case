@@ -1,32 +1,65 @@
-// Server-rendered Cue2Case case detail page with analyst workflow actions, notes, audit, and evidence timeline.
-import Link from 'next/link';
-import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
+'use client';
 
+// Tactical dark-themed Cue2Case operator view with score breakdown, replay timeline, actions, notes, audit, and map.
+import { use, useEffect, useMemo, useRef, useState } from 'react';
+
+const API =
+  typeof window !== 'undefined'
+    ? window.location.hostname === 'localhost'
+      ? 'http://localhost:8000'
+      : 'https://cue2case-api.bxb-om.com'
+    : 'http://localhost:8000';
+
+const COLORS = {
+  bg: '#0a0e17',
+  card: '#0f1419',
+  border: '#1a2338',
+  text: '#e0e6f0',
+  muted: '#94a3b8',
+  blue: '#60a5fa',
+  red: '#ef4444',
+  yellow: '#f59e0b',
+  green: '#4ade80',
+  purple: '#a78bfa',
+};
+
+type ScoreComponents = Partial<{
+  behavior_severity: number;
+  zone_criticality: number;
+  cue_corroboration: number;
+  identity_risk: number;
+  freshness: number;
+  uncertainty_penalty: number;
+}>;
+
+type ScorePayload = {
+  rank_score?: number | null;
+  why_now?: string[] | null;
+  top_reasons?: string[] | null;
+  components?: ScoreComponents | null;
+  confidence_explainer?: string | null;
+  benign_context?: string | null;
+  missing_evidence?: string[] | null;
+};
 
 type EvidenceItem = {
   id?: string | number;
-  case_id?: string | number;
   evidence_type?: string | null;
   evidence_ref?: string | null;
   provenance?: string | null;
   observed_at?: string | null;
-  timeline_order?: number | null;
   created_at?: string | null;
-  data?: {
-    explanation?: string | null;
-    alert_type?: string | null;
-    [key: string]: unknown;
-  } | null;
+  timeline_order?: number | null;
+  data?: Record<string, unknown> | null;
 };
 
 type NoteItem = {
   id?: string | number;
+  author?: string | null;
+  created_by?: string | null;
   body?: string | null;
   note?: string | null;
   content?: string | null;
-  author?: string | null;
-  created_by?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -37,10 +70,24 @@ type AuditItem = {
   event?: string | null;
   actor?: string | null;
   user?: string | null;
-  details?: unknown;
   summary?: string | null;
+  details?: unknown;
   created_at?: string | null;
   timestamp?: string | null;
+};
+
+type ReplayEvent = {
+  timestamp?: string | null;
+  event_type?: string | null;
+  narrative?: string | null;
+  data?: Record<string, unknown> | null;
+};
+
+type ReplayPayload = {
+  events?: ReplayEvent[] | null;
+  track_geojson?: unknown;
+  vessel?: Record<string, unknown> | null;
+  time_window?: Record<string, unknown> | null;
 };
 
 type CasePayload = {
@@ -48,27 +95,72 @@ type CasePayload = {
   title?: string | null;
   vessel_name?: string | null;
   mmsi?: string | number | null;
-  anomaly_score?: number | null;
-  rank_score?: number | null;
-  confidence_score?: number | null;
-  priority?: number | null;
   status?: string | null;
-  assigned_to?: string | null;
+  priority?: number | string | null;
+  severity?: string | null;
   summary?: string | null;
   recommended_action?: string | null;
-  created_at?: string | null;
-  start_observed_at?: string | null;
-  end_observed_at?: string | null;
+  zone_context?: string | null;
+  primary_geom?: unknown;
   evidence?: EvidenceItem[] | null;
+  score?: ScorePayload | null;
 };
 
-const apiUrl =
-  process.env.INTERNAL_API_URL ||
-  process.env.NEXT_PUBLIC_API_URL ||
-  'http://localhost:8000';
+type ActionState = {
+  loading: boolean;
+  message: string;
+  error: boolean;
+};
 
-function formatText(value?: string | null) {
-  return value && value.trim().length > 0 ? value : '—';
+declare global {
+  interface Window {
+    L?: {
+      map: (element: HTMLElement) => LeafletMap;
+      tileLayer: (url: string, options?: Record<string, unknown>) => { addTo: (map: LeafletMap) => void };
+      geoJSON: (data: unknown, options?: Record<string, unknown>) => {
+        addTo: (map: LeafletMap) => void;
+        getBounds?: () => LeafletBounds;
+      };
+      marker: (latlng: [number, number]) => { addTo: (map: LeafletMap) => { bindPopup?: (text: string) => void } };
+      latLngBounds: (points: [number, number][]) => LeafletBounds;
+    };
+  }
+}
+
+type LeafletBounds = {
+  isValid?: () => boolean;
+};
+
+type LeafletMap = {
+  setView: (center: [number, number], zoom: number) => LeafletMap;
+  fitBounds: (bounds: LeafletBounds, options?: Record<string, unknown>) => void;
+  remove: () => void;
+};
+
+function formatText(value?: string | number | null) {
+  if (value === null || value === undefined) {
+    return '—';
+  }
+
+  const text = String(value).trim();
+  return text.length ? text : '—';
+}
+
+function formatDate(value?: string | null) {
+  if (!value) {
+    return 'Unknown time';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return 'Invalid time';
+  }
+
+  return `${new Intl.DateTimeFormat('en-US', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'UTC',
+  }).format(date)} UTC`;
 }
 
 function formatScore(value?: number | null) {
@@ -79,130 +171,14 @@ function formatScore(value?: number | null) {
   return value.toFixed(3);
 }
 
-function formatUtcDate(value?: string | null) {
-  if (!value) {
-    return 'Unknown time';
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return 'Invalid date';
-  }
-
-  return new Intl.DateTimeFormat('en-US', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'UTC',
-  }).format(date) + ' UTC';
+function labelize(value: string) {
+  return value
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function formatObservedWindow(start?: string | null, end?: string | null) {
-  if (!start && !end) {
-    return 'Unknown window';
-  }
-
-  return `${formatUtcDate(start)} → ${formatUtcDate(end)}`;
-}
-
-function asEvidence(caseData?: CasePayload | null) {
-  return Array.isArray(caseData?.evidence) ? caseData.evidence : [];
-}
-
-function asNotes(notes?: NoteItem[] | null) {
-  return Array.isArray(notes) ? notes : [];
-}
-
-function asAudit(audit?: AuditItem[] | null) {
-  return Array.isArray(audit) ? audit : [];
-}
-
-async function fetchJson<T>(endpoint: string) {
-  const response = await fetch(endpoint, { cache: 'no-store' });
-
-  if (response.status === 404) {
-    return { kind: 'not-found' as const };
-  }
-
-  if (!response.ok) {
-    return {
-      kind: 'error' as const,
-      message: `API request failed with status ${response.status}`,
-    };
-  }
-
-  try {
-    const payload = (await response.json()) as T;
-    return { kind: 'ok' as const, payload };
-  } catch {
-    return {
-      kind: 'error' as const,
-      message: 'API returned invalid JSON',
-    };
-  }
-}
-
-async function getCase(caseId: string) {
-  return fetchJson<CasePayload>(`${apiUrl}/cases/${encodeURIComponent(caseId)}`);
-}
-
-async function getNotes(caseId: string) {
-  const result = await fetchJson<NoteItem[] | { notes?: NoteItem[] | null }>(
-    `${apiUrl}/cases/${encodeURIComponent(caseId)}/notes`
-  );
-
-  if (result.kind !== 'ok') {
-    return result;
-  }
-
-  const payload = result.payload;
-  const notes = Array.isArray(payload) ? payload : asNotes(payload.notes);
-  return { kind: 'ok' as const, payload: notes };
-}
-
-async function getAudit(caseId: string) {
-  const result = await fetchJson<AuditItem[] | { audit?: AuditItem[] | null }>(
-    `${apiUrl}/cases/${encodeURIComponent(caseId)}/audit`
-  );
-
-  if (result.kind !== 'ok') {
-    return result;
-  }
-
-  const payload = result.payload;
-  const audit = Array.isArray(payload) ? payload : asAudit(payload.audit);
-  return { kind: 'ok' as const, payload: audit };
-}
-
-async function patchCase(caseId: string, body: Record<string, unknown>) {
-  const response = await fetch(`${apiUrl}/cases/${encodeURIComponent(caseId)}`, {
-    method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Unable to update case ${caseId}: ${response.status}`);
-  }
-}
-
-async function postCaseNote(caseId: string, content: string) {
-  const response = await fetch(`${apiUrl}/cases/${encodeURIComponent(caseId)}/notes`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      author: 'abdullah',
-      content,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Unable to create note for case ${caseId}: ${response.status}`);
-  }
+function asArray<T>(value: T[] | null | undefined) {
+  return Array.isArray(value) ? value : [];
 }
 
 function noteBody(note: NoteItem) {
@@ -213,720 +189,810 @@ function noteAuthor(note: NoteItem) {
   return note.author || note.created_by || 'Analyst';
 }
 
-function auditLabel(entry: AuditItem) {
-  return entry.action || entry.event || 'Case event';
+function auditLabel(item: AuditItem) {
+  return item.action || item.event || 'case_event';
 }
 
-function auditActor(entry: AuditItem) {
-  return entry.actor || entry.user || 'System';
+function auditActor(item: AuditItem) {
+  return item.actor || item.user || 'system';
 }
 
-function auditDetail(entry: AuditItem) {
-  if (typeof entry.details === 'string') {
-    const details = entry.details.trim();
-    if (details.length > 0) {
-      return details;
+function detailText(value: unknown) {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function extractCoordinates(primaryGeom: unknown): [number, number] | null {
+  if (!primaryGeom || typeof primaryGeom !== 'object') {
+    return null;
+  }
+
+  const geom = primaryGeom as { type?: string; coordinates?: unknown; geometry?: unknown };
+  if (geom.type === 'Point' && Array.isArray(geom.coordinates) && geom.coordinates.length >= 2) {
+    const [lng, lat] = geom.coordinates;
+    if (typeof lat === 'number' && typeof lng === 'number') {
+      return [lat, lng];
     }
   }
 
-  if (Array.isArray(entry.details) || (entry.details && typeof entry.details === 'object')) {
+  if (geom.geometry) {
+    return extractCoordinates(geom.geometry);
+  }
+
+  return null;
+}
+
+function eventColor(type?: string | null) {
+  switch (type) {
+    case 'position':
+      return COLORS.blue;
+    case 'alert':
+      return COLORS.red;
+    case 'cue':
+      return COLORS.yellow;
+    case 'note':
+      return COLORS.green;
+    case 'status_change':
+      return COLORS.purple;
+    default:
+      return COLORS.muted;
+  }
+}
+
+function eventIcon(type?: string | null) {
+  switch (type) {
+    case 'position':
+      return '◎';
+    case 'alert':
+      return '⚠';
+    case 'cue':
+      return '◈';
+    case 'note':
+      return '✎';
+    case 'status_change':
+      return '⟳';
+    default:
+      return '•';
+  }
+}
+
+async function fetchJson<T>(url: string): Promise<T> {
+  const response = await fetch(url, { cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+
+  return (await response.json()) as T;
+}
+
+export default function CaseDetailPage({ params }: { params: Promise<{ caseId: string }> }) {
+  const { caseId } = use(params);
+  const mapRef = useRef<HTMLDivElement | null>(null);
+  const mapInstanceRef = useRef<LeafletMap | null>(null);
+
+  const [caseData, setCaseData] = useState<CasePayload | null>(null);
+  const [replay, setReplay] = useState<ReplayPayload | null>(null);
+  const [notes, setNotes] = useState<NoteItem[]>([]);
+  const [audit, setAudit] = useState<AuditItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [showAllEvents, setShowAllEvents] = useState(false);
+  const [dismissReason, setDismissReason] = useState('');
+  const [noteDraft, setNoteDraft] = useState('');
+  const [briefMarkdown, setBriefMarkdown] = useState('');
+  const [actionState, setActionState] = useState<ActionState>({ loading: false, message: '', error: false });
+  const [noteState, setNoteState] = useState<ActionState>({ loading: false, message: '', error: false });
+
+  const loadAll = async () => {
     try {
-      return JSON.stringify(entry.details, null, 2);
-    } catch {
-      return String(entry.summary || 'No additional detail provided.');
+      setLoading(true);
+      setLoadError('');
+
+      const [casePayload, replayPayload, notesPayload, auditPayload] = await Promise.all([
+        fetchJson<CasePayload>(`${API}/cases/${encodeURIComponent(caseId)}`),
+        fetchJson<ReplayPayload>(`${API}/cases/${encodeURIComponent(caseId)}/replay`),
+        fetchJson<NoteItem[] | { notes?: NoteItem[] }>(`${API}/cases/${encodeURIComponent(caseId)}/notes`),
+        fetchJson<AuditItem[] | { audit?: AuditItem[] }>(`${API}/cases/${encodeURIComponent(caseId)}/audit`),
+      ]);
+
+      setCaseData(casePayload);
+      setReplay(replayPayload);
+      setNotes(Array.isArray(notesPayload) ? notesPayload : asArray(notesPayload.notes));
+      setAudit(Array.isArray(auditPayload) ? auditPayload : asArray(auditPayload.audit));
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Failed to load case');
+    } finally {
+      setLoading(false);
     }
-  }
+  };
 
-  if (entry.details != null) {
-    return String(entry.details);
-  }
+  useEffect(() => {
+    void loadAll();
+  }, [caseId]);
 
-  return entry.summary || 'No additional detail provided.';
-}
+  const primaryCoords = useMemo(() => extractCoordinates(caseData?.primary_geom), [caseData?.primary_geom]);
 
-export default async function CaseDetailPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ caseId: string }>;
-  searchParams?: Promise<Record<string, string | string[] | undefined>>;
-}) {
-  const { caseId } = await params;
-  const resolvedSearchParams = (await searchParams) || {};
-  const feedback = Array.isArray(resolvedSearchParams.feedback)
-    ? resolvedSearchParams.feedback[0]
-    : resolvedSearchParams.feedback;
-  const [caseResult, notesResult, auditResult] = await Promise.all([
-    getCase(caseId),
-    getNotes(caseId),
-    getAudit(caseId),
-  ]);
-
-  async function updateWorkflow(formData: FormData) {
-    'use server';
-
-    const nextStatus = String(formData.get('status') || '').trim();
-    const nextAssignee = String(formData.get('assigned_to') || '').trim();
-    const payload: Record<string, string> = {};
-
-    if (nextStatus) {
-      payload.status = nextStatus;
-    }
-
-    if (nextAssignee) {
-      payload.assigned_to = nextAssignee;
-    }
-
-    if (Object.keys(payload).length === 0) {
+  useEffect(() => {
+    if (!mapRef.current || !window.L) {
       return;
     }
 
-    await patchCase(caseId, payload);
-    revalidatePath(`/cases/${caseId}`);
-    redirect(`/cases/${caseId}?feedback=workflow-updated`);
-  }
-
-  async function createNote(formData: FormData) {
-    'use server';
-
-    const content = String(formData.get('body') || '').trim();
-
-    if (!content) {
+    if (!caseData?.primary_geom && !primaryCoords) {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
       return;
     }
 
-    await postCaseNote(caseId, content);
-    revalidatePath(`/cases/${caseId}`);
-    redirect(`/cases/${caseId}?feedback=note-added`);
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.remove();
+      mapInstanceRef.current = null;
+    }
+
+    const map = window.L.map(mapRef.current).setView(primaryCoords || [0, 0], primaryCoords ? 7 : 2);
+    mapInstanceRef.current = map;
+
+    window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+    }).addTo(map);
+
+    if (caseData?.primary_geom) {
+      const layer = window.L.geoJSON(caseData.primary_geom);
+      layer.addTo(map);
+      const bounds = layer.getBounds?.();
+      if (bounds && bounds.isValid?.()) {
+        map.fitBounds(bounds, { padding: [24, 24] });
+      } else if (primaryCoords) {
+        map.setView(primaryCoords, 8);
+      }
+    } else if (primaryCoords) {
+      window.L.marker(primaryCoords).addTo(map);
+      map.setView(primaryCoords, 8);
+    }
+
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+    };
+  }, [caseData?.primary_geom, primaryCoords]);
+
+  const score = caseData?.score || {};
+  const whyNow = asArray(score.why_now);
+  const topReasons = asArray(score.top_reasons);
+  const missingEvidence = asArray(score.missing_evidence);
+  const evidence = asArray(caseData?.evidence);
+  const events = asArray(replay?.events);
+  const visibleEvents = showAllEvents ? events : events.slice(0, 30);
+  const components: Array<{ key: keyof ScoreComponents; label: string }> = [
+    { key: 'behavior_severity', label: 'Behavior severity' },
+    { key: 'zone_criticality', label: 'Zone criticality' },
+    { key: 'cue_corroboration', label: 'Cue corroboration' },
+    { key: 'identity_risk', label: 'Identity risk' },
+    { key: 'freshness', label: 'Freshness' },
+    { key: 'uncertainty_penalty', label: 'Uncertainty penalty' },
+  ];
+
+  const cueStrip = useMemo(() => {
+    const evidenceCueTypes = evidence
+      .map((item) => formatText(item.evidence_type))
+      .filter((item) => item !== '—')
+      .slice(0, 6);
+
+    return [...whyNow, ...evidenceCueTypes].slice(0, 8);
+  }, [evidence, whyNow]);
+
+  async function runAction(action: string, extra?: Record<string, unknown>) {
+    if (action === 'dismiss' && dismissReason.trim().length === 0) {
+      setActionState({ loading: false, message: 'Dismiss requires a reason.', error: true });
+      return;
+    }
+
+    try {
+      setActionState({ loading: true, message: '', error: false });
+
+      const response = await fetch(`${API}/cases/${encodeURIComponent(caseId)}/actions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          actor: 'abdullah',
+          ...(action === 'dismiss' ? { reason: dismissReason.trim() } : {}),
+          ...(action === 'assign' ? { assignee: 'abdullah' } : {}),
+          ...extra,
+        }),
+      });
+
+      let payload: Record<string, unknown> | null = null;
+      try {
+        payload = (await response.json()) as Record<string, unknown>;
+      } catch {
+        payload = null;
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          typeof payload?.detail === 'string'
+            ? payload.detail
+            : typeof payload?.message === 'string'
+              ? payload.message
+              : `Action failed: ${response.status}`
+        );
+      }
+
+      if (action === 'export_brief') {
+        const markdown =
+          (typeof payload?.markdown === 'string' && payload.markdown) ||
+          (typeof payload?.brief_markdown === 'string' && payload.brief_markdown) ||
+          (typeof payload?.content === 'string' && payload.content) ||
+          (typeof payload?.result === 'string' && payload.result) ||
+          'Export completed, but no markdown payload was returned.';
+        setBriefMarkdown(markdown);
+      }
+
+      if (action === 'dismiss') {
+        setDismissReason('');
+      }
+
+      setActionState({ loading: false, message: `${labelize(action)} completed.`, error: false });
+      await loadAll();
+    } catch (error) {
+      setActionState({ loading: false, message: error instanceof Error ? error.message : 'Action failed.', error: true });
+    }
   }
 
-  const pageStyle = {
-    fontFamily: 'Arial, sans-serif',
-    backgroundColor: '#f3f6fb',
-    color: '#0f172a',
-    minHeight: '100vh',
-    padding: '2rem',
-  } as const;
+  async function submitNote() {
+    if (noteDraft.trim().length === 0) {
+      setNoteState({ loading: false, message: 'Enter a note before submitting.', error: true });
+      return;
+    }
 
-  const cardStyle = {
-    backgroundColor: '#ffffff',
-    border: '1px solid #dbe3f0',
-    borderRadius: '16px',
-    padding: '1.25rem',
-    boxShadow: '0 8px 24px rgba(15, 23, 42, 0.06)',
-  } as const;
+    try {
+      setNoteState({ loading: true, message: '', error: false });
+      const response = await fetch(`${API}/cases/${encodeURIComponent(caseId)}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ author: 'abdullah', content: noteDraft.trim() }),
+      });
 
-  const sectionTitleStyle = {
-    margin: 0,
-    fontSize: '1.15rem',
-    color: '#0f172a',
-  } as const;
+      if (!response.ok) {
+        throw new Error(`Note submit failed: ${response.status}`);
+      }
 
-  const feedbackConfig =
-    feedback === 'workflow-updated'
-      ? {
-          title: 'Workflow updated',
-          description: 'The case status or assignee was updated successfully.',
-        }
-      : feedback === 'note-added'
-        ? {
-            title: 'Note added',
-            description: 'Your analyst note was saved to the case timeline.',
-          }
-        : null;
+      setNoteDraft('');
+      setNoteState({ loading: false, message: 'Note added.', error: false });
+      await loadAll();
+    } catch (error) {
+      setNoteState({ loading: false, message: error instanceof Error ? error.message : 'Failed to add note.', error: true });
+    }
+  }
 
   return (
-    <main style={pageStyle}>
-      <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
-        <div style={{ marginBottom: '1rem' }}>
-          <Link
-            href="/"
-            style={{
-              color: '#1d4ed8',
-              textDecoration: 'none',
-              fontWeight: 700,
-              fontSize: '0.95rem',
-            }}
-          >
-            ← Back to queue
-          </Link>
+    <div
+      style={{
+        minHeight: '100vh',
+        background: COLORS.bg,
+        color: COLORS.text,
+        padding: '20px',
+        fontSize: '13px',
+        lineHeight: 1.45,
+        fontFamily: 'Inter, Arial, sans-serif',
+      }}
+    >
+      <div style={{ maxWidth: '1600px', margin: '0 auto', display: 'grid', gap: '16px' }}>
+        <div
+          style={{
+            background: COLORS.card,
+            border: `1px solid ${COLORS.border}`,
+            borderRadius: '14px',
+            padding: '16px 18px',
+            display: 'grid',
+            gap: '12px',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'grid', gap: '6px' }}>
+              <div style={{ fontSize: '12px', color: COLORS.muted, textTransform: 'uppercase', letterSpacing: '0.14em' }}>
+                Tactical Case View
+              </div>
+              <div style={{ fontSize: '28px', fontWeight: 700 }}>{formatText(caseData?.title || `Case ${caseId}`)}</div>
+              <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', color: COLORS.muted }}>
+                <span>MMSI {formatText(caseData?.mmsi)}</span>
+                <span>Vessel {formatText(caseData?.vessel_name)}</span>
+                <span>Case ID {caseId}</span>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+              <Badge label={`Status ${formatText(caseData?.status)}`} color={COLORS.blue} />
+              <Badge label={`Severity ${formatText(caseData?.severity || caseData?.priority)}`} color={COLORS.red} />
+              <Badge label={`Evidence ${evidence.length}`} color={COLORS.green} />
+              <Badge label={`Replay ${events.length}`} color={COLORS.purple} />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gap: '8px' }}>
+            <div style={{ fontSize: '12px', color: COLORS.muted, textTransform: 'uppercase', letterSpacing: '0.14em' }}>
+              Why now
+            </div>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {whyNow.length ? (
+                whyNow.map((item, index) => <Badge key={`${item}-${index}`} label={item} color={COLORS.yellow} />)
+              ) : (
+                <span style={{ color: COLORS.muted }}>No active why-now cues.</span>
+              )}
+            </div>
+          </div>
         </div>
 
-        {feedbackConfig ? (
-          <section
-            style={{
-              ...cardStyle,
-              marginBottom: '1rem',
-              padding: '0.95rem 1.1rem',
-              backgroundColor: '#ecfdf3',
-              border: '1px solid #86efac',
-              color: '#166534',
-            }}
-          >
-            <div style={{ fontWeight: 700, marginBottom: '0.2rem' }}>{feedbackConfig.title}</div>
-            <div style={{ fontSize: '0.92rem' }}>{feedbackConfig.description}</div>
-          </section>
-        ) : null}
-
-        {caseResult.kind === 'not-found' ? (
-          <section
-            style={{
-              ...cardStyle,
-              textAlign: 'center',
-              color: '#475569',
-              padding: '2.5rem 1.5rem',
-            }}
-          >
-            <h1 style={{ margin: '0 0 0.5rem', fontSize: '1.8rem', color: '#0f172a' }}>
-              Case not found
-            </h1>
-            <p style={{ margin: 0, lineHeight: 1.6 }}>
-              No investigation case exists for ID {caseId}.
-            </p>
-          </section>
-        ) : caseResult.kind === 'error' ? (
-          <section
-            style={{
-              ...cardStyle,
-              backgroundColor: '#fff1f2',
-              border: '1px solid #fecdd3',
-              color: '#9f1239',
-            }}
-          >
-            <div style={{ fontWeight: 700, marginBottom: '0.35rem' }}>
-              Unable to load case detail
-            </div>
-            <div style={{ fontSize: '0.95rem' }}>
-              {caseResult.message}. Check API availability and configuration.
-            </div>
-          </section>
+        {loading ? (
+          <SectionCard title="Loading case">Fetching tactical picture…</SectionCard>
+        ) : loadError ? (
+          <SectionCard title="Load error">
+            <div style={{ color: COLORS.red }}>{loadError}</div>
+          </SectionCard>
         ) : (
-          (() => {
-            const caseData = caseResult.payload;
-            const evidence = asEvidence(caseData);
-            const notes = notesResult.kind === 'ok' ? asNotes(notesResult.payload) : [];
-            const audit = auditResult.kind === 'ok' ? asAudit(auditResult.payload) : [];
-
-            return (
-              <div style={{ display: 'grid', gap: '1rem' }}>
-                <section
-                  style={{
-                    ...cardStyle,
-                    padding: '1.5rem',
-                    background:
-                      'linear-gradient(135deg, rgba(219,234,254,0.65) 0%, rgba(255,255,255,1) 40%)',
-                  }}
-                >
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'flex-start',
-                      gap: '1rem',
-                      flexWrap: 'wrap',
-                      marginBottom: '1rem',
-                    }}
-                  >
-                    <div>
-                      <div
-                        style={{
-                          color: '#1d4ed8',
-                          fontWeight: 700,
-                          fontSize: '0.85rem',
-                          letterSpacing: '0.04em',
-                          textTransform: 'uppercase',
-                          marginBottom: '0.45rem',
-                        }}
-                      >
-                        Case {caseData.id ?? caseId}
+          <>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'minmax(0, 3fr) minmax(320px, 2fr)',
+                gap: '16px',
+                alignItems: 'start',
+              }}
+            >
+              <div style={{ display: 'grid', gap: '16px' }}>
+                <SectionCard title="Score breakdown">
+                  <div style={{ display: 'grid', gap: '16px' }}>
+                    <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ color: COLORS.muted, textTransform: 'uppercase', letterSpacing: '0.12em', fontSize: '11px' }}>
+                          Rank score
+                        </div>
+                        <div style={{ fontSize: '34px', fontWeight: 800, color: COLORS.blue }}>{formatScore(score.rank_score)}</div>
                       </div>
-                      <h1 style={{ margin: '0 0 0.4rem', fontSize: '2rem' }}>
-                        {formatText(caseData.title)}
-                      </h1>
-                      <div style={{ color: '#334155', fontSize: '1rem', fontWeight: 600 }}>
-                        {formatText(caseData.vessel_name)} · MMSI {caseData.mmsi ?? '—'}
-                      </div>
-                      <div style={{ color: '#475569', fontSize: '0.92rem', marginTop: '0.45rem' }}>
-                        Observed window: {formatObservedWindow(caseData.start_observed_at, caseData.end_observed_at)}
-                      </div>
+                      <div style={{ flex: 1, minWidth: '240px', color: COLORS.muted }}>{formatText(score.confidence_explainer)}</div>
                     </div>
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(3, minmax(110px, 1fr))',
-                        gap: '0.6rem',
-                        minWidth: '340px',
-                        width: 'min(100%, 420px)',
-                      }}
-                    >
-                      {[
-                        { label: 'Anomaly', value: formatScore(caseData.anomaly_score) },
-                        { label: 'Rank', value: formatScore(caseData.rank_score) },
-                        { label: 'Confidence', value: formatScore(caseData.confidence_score) },
-                      ].map((field) => (
+
+                    <div style={{ display: 'grid', gap: '10px' }}>
+                      {components.map(({ key, label }) => {
+                        const raw = score.components?.[key];
+                        const numeric = typeof raw === 'number' && Number.isFinite(raw) ? raw : 0;
+                        const percent = Math.max(0, Math.min(100, numeric <= 1 ? numeric * 100 : numeric));
+                        const barColor = key === 'uncertainty_penalty' ? COLORS.red : COLORS.blue;
+
+                        return (
+                          <div key={key} style={{ display: 'grid', gap: '6px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                              <span>{label}</span>
+                              <span style={{ color: COLORS.muted }}>{typeof raw === 'number' ? raw.toFixed(3) : '—'}</span>
+                            </div>
+                            <div style={{ height: '10px', background: '#09111f', borderRadius: '999px', overflow: 'hidden', border: `1px solid ${COLORS.border}` }}>
+                              <div style={{ width: `${percent}%`, height: '100%', background: barColor, opacity: 0.9 }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {score.benign_context ? (
+                      <div style={{ padding: '12px', borderRadius: '10px', background: '#0b1220', border: `1px solid ${COLORS.border}`, color: COLORS.muted }}>
+                        <div style={{ color: COLORS.green, marginBottom: '6px', fontWeight: 600 }}>Benign context</div>
+                        {score.benign_context}
+                      </div>
+                    ) : null}
+
+                    <div style={{ display: 'grid', gap: '8px' }}>
+                      <div style={{ color: COLORS.muted, textTransform: 'uppercase', letterSpacing: '0.12em', fontSize: '11px' }}>Top reasons</div>
+                      {topReasons.length ? (
+                        <ul style={{ margin: 0, paddingLeft: '18px', display: 'grid', gap: '6px' }}>
+                          {topReasons.map((reason, index) => (
+                            <li key={`${reason}-${index}`}>{reason}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div style={{ color: COLORS.muted }}>No supporting reasons returned.</div>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'grid', gap: '8px' }}>
+                      <div style={{ color: COLORS.red, textTransform: 'uppercase', letterSpacing: '0.12em', fontSize: '11px' }}>Missing evidence</div>
+                      {missingEvidence.length ? (
+                        missingEvidence.map((item, index) => (
+                          <div
+                            key={`${item}-${index}`}
+                            style={{
+                              padding: '10px 12px',
+                              borderRadius: '10px',
+                              border: `1px solid rgba(239,68,68,0.35)`,
+                              background: 'rgba(239,68,68,0.08)',
+                              color: '#fecaca',
+                            }}
+                          >
+                            {item}
+                          </div>
+                        ))
+                      ) : (
+                        <div style={{ color: COLORS.muted }}>No missing evidence flagged.</div>
+                      )}
+                    </div>
+                  </div>
+                </SectionCard>
+
+                <SectionCard title="Replay timeline" subtitle={`${events.length} events captured`}>
+                  <div style={{ display: 'grid', gap: '12px' }}>
+                    {visibleEvents.length ? (
+                      visibleEvents.map((event, index) => {
+                        const color = eventColor(event.event_type);
+                        return (
+                          <div key={`${event.timestamp || 'event'}-${index}`} style={{ display: 'grid', gridTemplateColumns: '26px 1fr', gap: '10px' }}>
+                            <div style={{ display: 'grid', justifyItems: 'center', gap: '4px' }}>
+                              <div
+                                style={{
+                                  width: '22px',
+                                  height: '22px',
+                                  borderRadius: '999px',
+                                  background: 'rgba(255,255,255,0.03)',
+                                  border: `1px solid ${color}`,
+                                  color,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: '12px',
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {eventIcon(event.event_type)}
+                              </div>
+                              {index < visibleEvents.length - 1 ? <div style={{ width: '1px', minHeight: '42px', background: COLORS.border }} /> : null}
+                            </div>
+                            <div style={{ paddingBottom: '8px' }}>
+                              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '5px' }}>
+                                <span style={{ color: COLORS.muted }}>{formatDate(event.timestamp)}</span>
+                                <Badge label={formatText(event.event_type)} color={color} />
+                              </div>
+                              <div style={{ marginBottom: '6px' }}>{formatText(event.narrative)}</div>
+                              {event.data ? (
+                                <pre
+                                  style={{
+                                    margin: 0,
+                                    whiteSpace: 'pre-wrap',
+                                    wordBreak: 'break-word',
+                                    padding: '10px',
+                                    borderRadius: '8px',
+                                    background: '#0b1220',
+                                    border: `1px solid ${COLORS.border}`,
+                                    color: COLORS.muted,
+                                    fontSize: '12px',
+                                  }}
+                                >
+                                  {detailText(event.data)}
+                                </pre>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div style={{ color: COLORS.muted }}>No replay events returned.</div>
+                    )}
+
+                    {events.length > 30 ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllEvents((value) => !value)}
+                        style={buttonStyle('secondary')}
+                      >
+                        {showAllEvents ? 'Show first 30' : `Show all ${events.length} events`}
+                      </button>
+                    ) : null}
+                  </div>
+                </SectionCard>
+
+                <SectionCard title="Evidence list" subtitle={`${evidence.length} evidence items`}>
+                  <div style={{ display: 'grid', gap: '10px' }}>
+                    {evidence.length ? (
+                      evidence.map((item, index) => (
                         <div
-                          key={field.label}
+                          key={String(item.id || index)}
                           style={{
-                            backgroundColor: '#0f172a',
-                            color: '#f8fafc',
-                            borderRadius: '14px',
-                            padding: '0.85rem',
+                            padding: '12px',
+                            borderRadius: '10px',
+                            border: `1px solid ${COLORS.border}`,
+                            background: '#0b1220',
+                            display: 'grid',
+                            gap: '8px',
                           }}
                         >
-                          <div style={{ fontSize: '0.75rem', opacity: 0.72, marginBottom: '0.25rem' }}>
-                            {field.label}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                              <Badge label={formatText(item.evidence_type)} color={COLORS.green} />
+                              {item.timeline_order !== null && item.timeline_order !== undefined ? (
+                                <Badge label={`Order ${item.timeline_order}`} color={COLORS.purple} />
+                              ) : null}
+                            </div>
+                            <div style={{ color: COLORS.muted }}>{formatDate(item.observed_at || item.created_at)}</div>
                           </div>
-                          <div style={{ fontSize: '1.15rem', fontWeight: 700 }}>{field.value}</div>
+                          <div style={{ color: COLORS.muted }}>
+                            Ref {formatText(item.evidence_ref)} · Source {formatText(item.provenance)}
+                          </div>
+                          {item.data ? (
+                            <pre
+                              style={{
+                                margin: 0,
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-word',
+                                padding: '10px',
+                                borderRadius: '8px',
+                                background: COLORS.bg,
+                                border: `1px solid ${COLORS.border}`,
+                                color: COLORS.text,
+                                fontSize: '12px',
+                              }}
+                            >
+                              {detailText(item.data)}
+                            </pre>
+                          ) : null}
                         </div>
-                      ))}
-                    </div>
+                      ))
+                    ) : (
+                      <div style={{ color: COLORS.muted }}>No evidence attached.</div>
+                    )}
                   </div>
+                </SectionCard>
+              </div>
 
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-                      gap: '0.75rem',
-                    }}
-                  >
-                    {[
-                      { label: 'Status', value: formatText(caseData.status) },
-                      { label: 'Assigned to', value: formatText(caseData.assigned_to) },
-                      { label: 'Priority', value: String(caseData.priority ?? '—') },
-                      { label: 'Created', value: formatUtcDate(caseData.created_at) },
-                    ].map((field) => (
+              <div style={{ display: 'grid', gap: '16px' }}>
+                <SectionCard title="Operator actions">
+                  <div style={{ display: 'grid', gap: '10px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px' }}>
+                      <button type="button" onClick={() => void runAction('acknowledge')} style={buttonStyle('primary')} disabled={actionState.loading}>
+                        Acknowledge
+                      </button>
+                      <button type="button" onClick={() => void runAction('assign')} style={buttonStyle('primary')} disabled={actionState.loading}>
+                        Assign to me
+                      </button>
+                      <button type="button" onClick={() => void runAction('escalate')} style={buttonStyle('danger')} disabled={actionState.loading}>
+                        Escalate
+                      </button>
+                      <button type="button" onClick={() => void runAction('export_brief')} style={buttonStyle('secondary')} disabled={actionState.loading}>
+                        Export brief
+                      </button>
+                    </div>
+
+                    <div style={{ display: 'grid', gap: '8px', marginTop: '4px' }}>
+                      <label style={{ color: COLORS.muted }}>Dismiss reason</label>
+                      <input
+                        value={dismissReason}
+                        onChange={(event) => setDismissReason(event.target.value)}
+                        placeholder="Required for dismiss"
+                        style={inputStyle}
+                      />
+                      <button type="button" onClick={() => void runAction('dismiss')} style={buttonStyle('danger')} disabled={actionState.loading}>
+                        Dismiss
+                      </button>
+                    </div>
+
+                    {actionState.message ? (
                       <div
-                        key={field.label}
                         style={{
-                          padding: '0.85rem',
-                          backgroundColor: 'rgba(248,250,252,0.95)',
-                          border: '1px solid #dbe3f0',
-                          borderRadius: '12px',
+                          padding: '10px 12px',
+                          borderRadius: '10px',
+                          border: `1px solid ${actionState.error ? 'rgba(239,68,68,0.4)' : 'rgba(74,222,128,0.4)'}`,
+                          background: actionState.error ? 'rgba(239,68,68,0.08)' : 'rgba(74,222,128,0.08)',
+                          color: actionState.error ? '#fecaca' : '#bbf7d0',
                         }}
                       >
-                        <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.25rem' }}>
-                          {field.label}
-                        </div>
-                        <div style={{ fontSize: '0.95rem', fontWeight: 700 }}>{field.value}</div>
+                        {actionState.loading ? 'Working… ' : ''}
+                        {actionState.message}
                       </div>
-                    ))}
-                  </div>
-                </section>
+                    ) : null}
 
+                    {briefMarkdown ? (
+                      <div style={{ display: 'grid', gap: '8px' }}>
+                        <div style={{ color: COLORS.muted, textTransform: 'uppercase', letterSpacing: '0.12em', fontSize: '11px' }}>
+                          Exported brief
+                        </div>
+                        <pre
+                          style={{
+                            margin: 0,
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word',
+                            padding: '12px',
+                            borderRadius: '10px',
+                            background: '#0b1220',
+                            border: `1px solid ${COLORS.border}`,
+                            maxHeight: '320px',
+                            overflow: 'auto',
+                          }}
+                        >
+                          {briefMarkdown}
+                        </pre>
+                      </div>
+                    ) : null}
+                  </div>
+                </SectionCard>
+
+                <SectionCard title="Notes">
+                  <div style={{ display: 'grid', gap: '10px' }}>
+                    <textarea
+                      value={noteDraft}
+                      onChange={(event) => setNoteDraft(event.target.value)}
+                      placeholder="Add analyst note"
+                      style={{ ...inputStyle, minHeight: '96px', resize: 'vertical' }}
+                    />
+                    <button type="button" onClick={() => void submitNote()} style={buttonStyle('primary')} disabled={noteState.loading}>
+                      Submit note
+                    </button>
+                    {noteState.message ? (
+                      <div style={{ color: noteState.error ? COLORS.red : COLORS.green }}>{noteState.message}</div>
+                    ) : null}
+                    <div style={{ display: 'grid', gap: '10px' }}>
+                      {notes.length ? (
+                        notes.map((note, index) => (
+                          <div key={String(note.id || index)} style={{ padding: '12px', borderRadius: '10px', border: `1px solid ${COLORS.border}`, background: '#0b1220' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', marginBottom: '6px', flexWrap: 'wrap' }}>
+                              <strong>{noteAuthor(note)}</strong>
+                              <span style={{ color: COLORS.muted }}>{formatDate(note.created_at || note.updated_at)}</span>
+                            </div>
+                            <div style={{ whiteSpace: 'pre-wrap' }}>{noteBody(note)}</div>
+                          </div>
+                        ))
+                      ) : (
+                        <div style={{ color: COLORS.muted }}>No analyst notes yet.</div>
+                      )}
+                    </div>
+                  </div>
+                </SectionCard>
+
+                <SectionCard title="Cue strip">
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                    {cueStrip.length ? cueStrip.map((cue, index) => <Badge key={`${cue}-${index}`} label={cue} color={COLORS.yellow} />) : <span style={{ color: COLORS.muted }}>No cues collected.</span>}
+                  </div>
+                  <div style={{ color: COLORS.muted, whiteSpace: 'pre-wrap' }}>{formatText(caseData?.zone_context || caseData?.summary)}</div>
+                </SectionCard>
+
+                <SectionCard title="Audit trail" subtitle={`${audit.length} records`}>
+                  <div style={{ display: 'grid', gap: '8px' }}>
+                    {audit.length ? (
+                      audit.map((item, index) => (
+                        <div key={String(item.id || index)} style={{ padding: '10px 12px', borderRadius: '10px', border: `1px solid ${COLORS.border}`, background: '#0b1220' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                              <Badge label={labelize(auditLabel(item))} color={COLORS.purple} />
+                              <span style={{ color: COLORS.muted }}>by {auditActor(item)}</span>
+                            </div>
+                            <span style={{ color: COLORS.muted }}>{formatDate(item.timestamp || item.created_at)}</span>
+                          </div>
+                          <div style={{ color: COLORS.text }}>{formatText(item.summary || detailText(item.details))}</div>
+                        </div>
+                      ))
+                    ) : (
+                      <div style={{ color: COLORS.muted }}>No audit activity returned.</div>
+                    )}
+                  </div>
+                </SectionCard>
+              </div>
+            </div>
+
+            <SectionCard title="Map section" subtitle={primaryCoords ? `Lat ${primaryCoords[0].toFixed(4)} · Lon ${primaryCoords[1].toFixed(4)}` : 'No primary geometry available'}>
+              {caseData?.primary_geom || primaryCoords ? (
+                <div ref={mapRef} style={{ height: '360px', width: '100%', borderRadius: '12px', overflow: 'hidden', border: `1px solid ${COLORS.border}` }} />
+              ) : (
                 <div
                   style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'minmax(0, 2fr) minmax(320px, 1fr)',
-                    gap: '1rem',
-                    alignItems: 'start',
+                    height: '180px',
+                    borderRadius: '12px',
+                    border: `1px dashed ${COLORS.border}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: COLORS.muted,
+                    background: '#0b1220',
                   }}
                 >
-                  <div style={{ display: 'grid', gap: '1rem' }}>
-                    <section style={cardStyle}>
-                      <div style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: '0.35rem' }}>
-                        Summary
-                      </div>
-                      <p style={{ margin: 0, lineHeight: 1.7, color: '#334155' }}>
-                        {formatText(caseData.summary)}
-                      </p>
-                    </section>
-
-                    <section style={cardStyle}>
-                      <div style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: '0.35rem' }}>
-                        Recommended action
-                      </div>
-                      <p style={{ margin: 0, lineHeight: 1.7, color: '#334155' }}>
-                        {formatText(caseData.recommended_action)}
-                      </p>
-                    </section>
-
-                    <section style={cardStyle}>
-                      <div
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          gap: '1rem',
-                          flexWrap: 'wrap',
-                          marginBottom: '1rem',
-                        }}
-                      >
-                        <div>
-                          <h2 style={sectionTitleStyle}>Evidence timeline</h2>
-                          <div style={{ marginTop: '0.25rem', color: '#64748b', fontSize: '0.9rem' }}>
-                            Observed time is primary. Ingest time is shown secondarily.
-                          </div>
-                        </div>
-                        <div style={{ color: '#475569', fontSize: '0.9rem', fontWeight: 600 }}>
-                          {evidence.length} item{evidence.length === 1 ? '' : 's'}
-                        </div>
-                      </div>
-
-                      {evidence.length === 0 ? (
-                        <div
-                          style={{
-                            padding: '1.25rem',
-                            textAlign: 'center',
-                            color: '#475569',
-                            backgroundColor: '#f8fafc',
-                            border: '1px dashed #cbd5e1',
-                            borderRadius: '12px',
-                          }}
-                        >
-                          No evidence has been attached to this case yet.
-                        </div>
-                      ) : (
-                        <div style={{ display: 'grid', gap: '0.8rem' }}>
-                          {evidence.map((item, index) => {
-                            const alertType =
-                              item.data && typeof item.data.alert_type === 'string'
-                                ? item.data.alert_type
-                                : null;
-                            const explanation =
-                              item.data && typeof item.data.explanation === 'string'
-                                ? item.data.explanation
-                                : null;
-
-                            return (
-                              <article
-                                key={item.id ?? `${item.evidence_type ?? 'evidence'}-${index}`}
-                                style={{
-                                  padding: '1rem',
-                                  backgroundColor: '#f8fafc',
-                                  border: '1px solid #e2e8f0',
-                                  borderRadius: '14px',
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    display: 'grid',
-                                    gridTemplateColumns: 'minmax(0, 1.5fr) minmax(260px, 1fr)',
-                                    gap: '0.9rem',
-                                    marginBottom: explanation ? '0.75rem' : 0,
-                                  }}
-                                >
-                                  <div>
-                                    <div
-                                      style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '0.5rem',
-                                        flexWrap: 'wrap',
-                                        marginBottom: '0.35rem',
-                                      }}
-                                    >
-                                      <div
-                                        style={{
-                                          fontSize: '1rem',
-                                          fontWeight: 700,
-                                          color: '#0f172a',
-                                        }}
-                                      >
-                                        {formatText(item.evidence_type)}
-                                      </div>
-                                      {alertType ? (
-                                        <span
-                                          style={{
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            borderRadius: '999px',
-                                            padding: '0.22rem 0.55rem',
-                                            fontSize: '0.72rem',
-                                            fontWeight: 700,
-                                            color: '#1d4ed8',
-                                            backgroundColor: '#dbeafe',
-                                            border: '1px solid #bfdbfe',
-                                          }}
-                                        >
-                                          {alertType}
-                                        </span>
-                                      ) : null}
-                                    </div>
-                                    <div style={{ color: '#475569', fontSize: '0.9rem' }}>
-                                      Provenance: {formatText(item.provenance)}
-                                    </div>
-                                    <div style={{ color: '#475569', fontSize: '0.9rem', marginTop: '0.2rem' }}>
-                                      Ref: {formatText(item.evidence_ref)}
-                                    </div>
-                                  </div>
-                                  <div
-                                    style={{
-                                      backgroundColor: '#ffffff',
-                                      border: '1px solid #dbe3f0',
-                                      borderRadius: '12px',
-                                      padding: '0.75rem',
-                                    }}
-                                  >
-                                    <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.2rem' }}>
-                                      Timeline order
-                                    </div>
-                                    <div style={{ fontWeight: 700, marginBottom: '0.55rem' }}>
-                                      {item.timeline_order ?? index + 1}
-                                    </div>
-                                    <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.2rem' }}>
-                                      Observed at
-                                    </div>
-                                    <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.55rem' }}>
-                                      {formatUtcDate(item.observed_at)}
-                                    </div>
-                                    <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.2rem' }}>
-                                      Recorded at
-                                    </div>
-                                    <div style={{ fontSize: '0.88rem', color: '#334155' }}>
-                                      {formatUtcDate(item.created_at)}
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {explanation ? (
-                                  <p style={{ margin: 0, lineHeight: 1.7, color: '#334155' }}>
-                                    {explanation}
-                                  </p>
-                                ) : null}
-                              </article>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </section>
-                  </div>
-
-                  <div style={{ display: 'grid', gap: '1rem' }}>
-                    <section style={cardStyle}>
-                      <div style={{ marginBottom: '0.9rem' }}>
-                        <h2 style={sectionTitleStyle}>Workflow actions</h2>
-                        <div style={{ color: '#64748b', fontSize: '0.9rem', marginTop: '0.25rem' }}>
-                          Quick analyst state changes for this case.
-                        </div>
-                        <div style={{ color: '#94a3b8', fontSize: '0.82rem', marginTop: '0.35rem' }}>
-                          Changes save immediately and refresh with a confirmation message.
-                        </div>
-                      </div>
-                      <div style={{ display: 'grid', gap: '0.65rem' }}>
-                        {[
-                          { label: 'Start review', status: 'in_review' },
-                          { label: 'Assign to me', assigned_to: 'Abdullah' },
-                          { label: 'Escalate', status: 'escalated' },
-                          { label: 'Resolve', status: 'resolved' },
-                          { label: 'Dismiss', status: 'dismissed' },
-                        ].map((action) => {
-                          const isActive =
-                            ('status' in action && caseData.status === action.status) ||
-                            ('assigned_to' in action && caseData.assigned_to === action.assigned_to);
-
-                          return (
-                            <form key={action.label} action={updateWorkflow}>
-                              {'status' in action ? (
-                                <input type="hidden" name="status" value={action.status} />
-                              ) : null}
-                              {'assigned_to' in action ? (
-                                <input type="hidden" name="assigned_to" value={action.assigned_to} />
-                              ) : null}
-                              <button
-                                type="submit"
-                                aria-pressed={isActive}
-                                style={{
-                                  width: '100%',
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  alignItems: 'center',
-                                  gap: '0.75rem',
-                                  textAlign: 'left',
-                                  border: isActive ? '1px solid #93c5fd' : '1px solid #cbd5e1',
-                                  borderRadius: '12px',
-                                  backgroundColor: isActive ? '#eff6ff' : '#ffffff',
-                                  color: '#0f172a',
-                                  padding: '0.85rem 0.95rem',
-                                  fontWeight: 700,
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                <span>{action.label}</span>
-                                <span
-                                  style={{
-                                    fontSize: '0.74rem',
-                                    fontWeight: 700,
-                                    color: isActive ? '#1d4ed8' : '#64748b',
-                                  }}
-                                >
-                                  {isActive ? 'Current' : 'Save'}
-                                </span>
-                              </button>
-                            </form>
-                          );
-                        })}
-                      </div>
-                    </section>
-
-                    <section style={cardStyle}>
-                      <div style={{ marginBottom: '0.9rem' }}>
-                        <h2 style={sectionTitleStyle}>Analyst notes</h2>
-                        <div style={{ color: '#64748b', fontSize: '0.9rem', marginTop: '0.25rem' }}>
-                          Working notes for handoff, decisions, and context.
-                        </div>
-                      </div>
-
-                      <form action={createNote} style={{ display: 'grid', gap: '0.6rem', marginBottom: '1rem' }}>
-                        <textarea
-                          name="body"
-                          rows={4}
-                          placeholder="Add an analyst note…"
-                          style={{
-                            width: '100%',
-                            resize: 'vertical',
-                            border: '1px solid #cbd5e1',
-                            borderRadius: '12px',
-                            padding: '0.85rem',
-                            font: 'inherit',
-                            color: '#0f172a',
-                            backgroundColor: '#fff',
-                            boxSizing: 'border-box',
-                          }}
-                        />
-                        <button
-                          type="submit"
-                          style={{
-                            justifySelf: 'start',
-                            border: '1px solid #1d4ed8',
-                            backgroundColor: '#1d4ed8',
-                            color: '#fff',
-                            borderRadius: '10px',
-                            padding: '0.65rem 0.9rem',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          Add note
-                        </button>
-                      </form>
-
-                      {notesResult.kind === 'error' ? (
-                        <div style={{ color: '#9f1239', fontSize: '0.92rem' }}>
-                          Failed to load notes: {notesResult.message}
-                        </div>
-                      ) : notes.length === 0 ? (
-                        <div
-                          style={{
-                            padding: '1rem',
-                            color: '#475569',
-                            backgroundColor: '#f8fafc',
-                            border: '1px dashed #cbd5e1',
-                            borderRadius: '12px',
-                          }}
-                        >
-                          No notes yet.
-                        </div>
-                      ) : (
-                        <div style={{ display: 'grid', gap: '0.75rem' }}>
-                          {notes.map((note, index) => (
-                            <article
-                              key={note.id ?? `note-${index}`}
-                              style={{
-                                border: '1px solid #e2e8f0',
-                                borderRadius: '12px',
-                                backgroundColor: '#f8fafc',
-                                padding: '0.85rem',
-                              }}
-                            >
-                              <div
-                                style={{
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  gap: '0.75rem',
-                                  flexWrap: 'wrap',
-                                  marginBottom: '0.45rem',
-                                }}
-                              >
-                                <div style={{ fontWeight: 700, fontSize: '0.92rem' }}>{noteAuthor(note)}</div>
-                                <div style={{ color: '#64748b', fontSize: '0.82rem' }}>
-                                  {formatUtcDate(note.created_at || note.updated_at)}
-                                </div>
-                              </div>
-                              <p style={{ margin: 0, lineHeight: 1.6, color: '#334155', whiteSpace: 'pre-wrap' }}>
-                                {noteBody(note)}
-                              </p>
-                            </article>
-                          ))}
-                        </div>
-                      )}
-                    </section>
-
-                    <section style={cardStyle}>
-                      <div style={{ marginBottom: '0.9rem' }}>
-                        <h2 style={sectionTitleStyle}>Audit trail</h2>
-                        <div style={{ color: '#64748b', fontSize: '0.9rem', marginTop: '0.25rem' }}>
-                          Recent workflow and system activity on this case.
-                        </div>
-                      </div>
-
-                      {auditResult.kind === 'error' ? (
-                        <div style={{ color: '#9f1239', fontSize: '0.92rem' }}>
-                          Failed to load audit trail: {auditResult.message}
-                        </div>
-                      ) : audit.length === 0 ? (
-                        <div
-                          style={{
-                            padding: '1rem',
-                            color: '#475569',
-                            backgroundColor: '#f8fafc',
-                            border: '1px dashed #cbd5e1',
-                            borderRadius: '12px',
-                          }}
-                        >
-                          No audit events recorded yet.
-                        </div>
-                      ) : (
-                        <div style={{ display: 'grid', gap: '0.75rem' }}>
-                          {audit.map((entry, index) => (
-                            <article
-                              key={entry.id ?? `audit-${index}`}
-                              style={{
-                                borderLeft: '3px solid #1d4ed8',
-                                padding: '0.15rem 0 0.15rem 0.85rem',
-                              }}
-                            >
-                              <div
-                                style={{
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  gap: '0.75rem',
-                                  flexWrap: 'wrap',
-                                  marginBottom: '0.2rem',
-                                }}
-                              >
-                                <div style={{ fontWeight: 700, fontSize: '0.92rem' }}>{auditLabel(entry)}</div>
-                                <div style={{ color: '#64748b', fontSize: '0.82rem' }}>
-                                  {formatUtcDate(entry.created_at || entry.timestamp)}
-                                </div>
-                              </div>
-                              <div style={{ color: '#334155', fontSize: '0.88rem', marginBottom: '0.2rem' }}>
-                                Actor: {auditActor(entry)}
-                              </div>
-                              <pre
-                                style={{
-                                  margin: 0,
-                                  color: '#475569',
-                                  fontSize: '0.88rem',
-                                  lineHeight: 1.5,
-                                  whiteSpace: 'pre-wrap',
-                                  wordBreak: 'break-word',
-                                  fontFamily: 'inherit',
-                                }}
-                              >
-                                {auditDetail(entry)}
-                              </pre>
-                            </article>
-                          ))}
-                        </div>
-                      )}
-                    </section>
-                  </div>
+                  No map geometry on this case.
                 </div>
-              </div>
-            );
-          })()
+              )}
+            </SectionCard>
+          </>
         )}
       </div>
-    </main>
+    </div>
   );
 }
+
+function SectionCard({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      style={{
+        background: COLORS.card,
+        border: `1px solid ${COLORS.border}`,
+        borderRadius: '14px',
+        padding: '14px',
+        display: 'grid',
+        gap: '12px',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', alignItems: 'baseline' }}>
+        <div style={{ fontSize: '15px', fontWeight: 700 }}>{title}</div>
+        {subtitle ? <div style={{ color: COLORS.muted, fontSize: '12px' }}>{subtitle}</div> : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Badge({ label, color }: { label: string; color: string }) {
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        padding: '5px 9px',
+        borderRadius: '999px',
+        border: `1px solid ${color}`,
+        color,
+        background: 'rgba(255,255,255,0.02)',
+        fontSize: '11px',
+        textTransform: 'uppercase',
+        letterSpacing: '0.08em',
+        fontWeight: 700,
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+function buttonStyle(kind: 'primary' | 'secondary' | 'danger'): React.CSSProperties {
+  const palette =
+    kind === 'danger'
+      ? { border: COLORS.red, text: '#fecaca', background: 'rgba(239,68,68,0.12)' }
+      : kind === 'secondary'
+        ? { border: COLORS.purple, text: '#ddd6fe', background: 'rgba(167,139,250,0.12)' }
+        : { border: COLORS.blue, text: '#dbeafe', background: 'rgba(96,165,250,0.12)' };
+
+  return {
+    padding: '10px 12px',
+    borderRadius: '10px',
+    border: `1px solid ${palette.border}`,
+    background: palette.background,
+    color: palette.text,
+    cursor: 'pointer',
+    fontSize: '12px',
+    fontWeight: 700,
+  };
+}
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '10px 12px',
+  borderRadius: '10px',
+  border: `1px solid ${COLORS.border}`,
+  background: '#0b1220',
+  color: COLORS.text,
+  fontSize: '13px',
+  outline: 'none',
+  boxSizing: 'border-box',
+};
