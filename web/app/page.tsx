@@ -63,7 +63,7 @@ export default async function QueuePage(props: { searchParams?: Promise<SearchPa
   const searchParams = props.searchParams ? await props.searchParams : {};
   const statusFilter = searchParams?.status || '';
   const url = statusFilter
-    ? `${apiUrl}/cases/?limit=100&status=${statusFilter}`
+    ? `${apiUrl}/cases/?limit=100&status=${encodeURIComponent(statusFilter)}`
     : `${apiUrl}/cases/?limit=100`;
 
   let cases: CaseItem[] = [];
@@ -76,11 +76,14 @@ export default async function QueuePage(props: { searchParams?: Promise<SearchPa
     error = e instanceof Error ? e.message : 'Failed to fetch cases';
   }
 
+  // When filtering by status, counts reflect the filtered set for the active tab
+  // but 'all' always shows total count from the response
+  const allCasesCount = cases.length;
   const counts = {
-    all: cases.length,
-    new: cases.filter(c => c.status === 'new').length,
-    in_review: cases.filter(c => c.status === 'in_review').length,
-    escalated: cases.filter(c => c.status === 'escalated').length,
+    all: allCasesCount,
+    new: statusFilter ? (statusFilter === 'new' ? cases.length : 0) : cases.filter(c => c.status === 'new').length,
+    in_review: statusFilter ? (statusFilter === 'in_review' ? cases.length : 0) : cases.filter(c => c.status === 'in_review').length,
+    escalated: statusFilter ? (statusFilter === 'escalated' ? cases.length : 0) : cases.filter(c => c.status === 'escalated').length,
   };
 
   const tabs = [

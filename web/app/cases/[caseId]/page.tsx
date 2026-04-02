@@ -299,17 +299,20 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
       setLoading(true);
       setLoadError('');
 
-      const [casePayload, replayPayload, notesPayload, auditPayload] = await Promise.all([
-        fetchJson<CasePayload>(`${API}/cases/${encodeURIComponent(caseId)}`),
-        fetchJson<ReplayPayload>(`${API}/cases/${encodeURIComponent(caseId)}/replay`),
-        fetchJson<NoteItem[] | { notes?: NoteItem[] }>(`${API}/cases/${encodeURIComponent(caseId)}/notes`),
-        fetchJson<AuditItem[] | { audit?: AuditItem[] }>(`${API}/cases/${encodeURIComponent(caseId)}/audit`),
+      // Core case data — must succeed
+      const casePayload = await fetchJson<CasePayload>(`${API}/cases/${encodeURIComponent(caseId)}`);
+      setCaseData(casePayload);
+
+      // Non-critical data — fetch independently so failures don't block the page
+      const [replayPayload, notesPayload, auditPayload] = await Promise.all([
+        fetchJson<ReplayPayload>(`${API}/cases/${encodeURIComponent(caseId)}/replay`).catch(() => null),
+        fetchJson<NoteItem[] | { notes?: NoteItem[] }>(`${API}/cases/${encodeURIComponent(caseId)}/notes`).catch(() => null),
+        fetchJson<AuditItem[] | { audit?: AuditItem[] }>(`${API}/cases/${encodeURIComponent(caseId)}/audit`).catch(() => null),
       ]);
 
-      setCaseData(casePayload);
-      setReplay(replayPayload);
-      setNotes(Array.isArray(notesPayload) ? notesPayload : asArray(notesPayload.notes));
-      setAudit(Array.isArray(auditPayload) ? auditPayload : asArray(auditPayload.audit));
+      if (replayPayload) setReplay(replayPayload);
+      if (notesPayload) setNotes(Array.isArray(notesPayload) ? notesPayload : asArray((notesPayload as any).notes));
+      if (auditPayload) setAudit(Array.isArray(auditPayload) ? auditPayload : asArray((auditPayload as any).audit));
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : 'Failed to load case');
     } finally {
@@ -323,8 +326,12 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
 
   const primaryCoords = useMemo(() => extractCoordinates(caseData?.primary_geom), [caseData?.primary_geom]);
 
+  const [mapError, setMapError] = useState(false);
+
   useEffect(() => {
-    if (!mapRef.current || !window.L) {
+    if (!mapRef.current) return;
+    if (!(window as any).L) {
+      setMapError(true);
       return;
     }
 
@@ -349,13 +356,18 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
     }).addTo(map);
 
     if (caseData?.primary_geom) {
-      const layer = window.L.geoJSON(caseData.primary_geom);
-      layer.addTo(map);
-      const bounds = layer.getBounds?.();
-      if (bounds && bounds.isValid?.()) {
-        map.fitBounds(bounds, { padding: [24, 24] });
-      } else if (primaryCoords) {
-        map.setView(primaryCoords, 8);
+      try {
+        const layer = window.L.geoJSON(caseData.primary_geom);
+        layer.addTo(map);
+        const bounds = layer.getBounds?.();
+        if (bounds && bounds.isValid?.()) {
+          map.fitBounds(bounds, { padding: [24, 24] });
+        } else if (primaryCoords) {
+          map.setView(primaryCoords, 8);
+        }
+      } catch {
+        // Malformed GeoJSON — ignore layer
+        if (primaryCoords) map.setView(primaryCoords, 8);
       }
     } else if (primaryCoords) {
       window.L.marker(primaryCoords).addTo(map);
@@ -889,7 +901,13 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
 
             <SectionCard title="Map section" subtitle={primaryCoords ? `Lat ${primaryCoords[0].toFixed(4)} · Lon ${primaryCoords[1].toFixed(4)}` : 'No primary geometry available'}>
               {caseData?.primary_geom || primaryCoords ? (
-                <div ref={mapRef} style={{ height: '360px', width: '100%', borderRadius: '12px', overflow: 'hidden', border: `1px solid ${COLORS.border}` }} />
+                {mapError ? (
+                  <div style={{ height: '360px', width: '100%', borderRadius: '12px', border: `1px solid ${COLORS.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLORS.muted, fontSize: '13px', backgroundColor: COLORS.surface }}>
+                    Map unavailable — Leaflet failed to load
+                  </div>
+                ) : (
+                  <div ref={mapRef} style={{ height: '360px', width: '100%', borderRadius: '12px', overflow: 'hidden', border: `1px solid ${COLORS.border}` }} />
+                )}
               ) : (
                 <div
                   style={{
