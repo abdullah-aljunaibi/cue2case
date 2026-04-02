@@ -19,6 +19,8 @@ DATABASE_URL = os.environ.get(
 )
 
 MIN_SILENCE_MINUTES = 15
+REPEATED_SILENCE_WINDOW = timedelta(hours=24)
+REPEATED_SILENCE_THRESHOLD = 3
 
 
 def haversine_nm(lat1, lon1, lat2, lon2):
@@ -93,6 +95,17 @@ def calculate_severity(gap_minutes, distance_nm, geofence_zones_before, geofence
     return max(0.05, min(round(base, 3), 1.0))
 
 
+def count_clustered_episodes(episodes, current_episode, window=REPEATED_SILENCE_WINDOW):
+    """Count silence episodes whose start times fall within the trailing window."""
+    current_start = current_episode['start']
+    window_start = current_start - window
+    return sum(
+        1
+        for episode in episodes
+        if window_start <= episode['start'] <= current_start
+    )
+
+
 def detect_ais_silence():
     """Run context-aware AIS silence detection."""
     conn = psycopg2.connect(DATABASE_URL)
@@ -109,7 +122,6 @@ def detect_ais_silence():
     print(f"Fetched {len(rows)} positions.")
 
     alerts = []
-    vessel_episodes = {}  # mmsi -> list of silence episodes for clustering
 
     for mmsi, group in groupby(rows, key=lambda r: r[0]):
         positions = list(group)
@@ -163,6 +175,29 @@ def detect_ais_silence():
                 }
                 episodes.append(episode)
 
+                clustered_episode_count = count_clustered_episodes(episodes, episode)
+                if clustered_episode_count >= REPEATED_SILENCE_THRESHOLD:
+                    severity = min(severity + 0.1, 1.0)
+
+                alert_details = {
+                    'gap_minutes': round(gap_minutes, 1),
+                    'distance_during_gap_nm': round(distance_nm, 2),
+                    'last_seen': prev[1].isoformat(),
+                    'last_lat': prev[3],
+                    'last_lon': prev[2],
+                    'last_sog': prev[4],
+                    'reappeared_at': curr[1].isoformat(),
+                    'reappeared_lat': curr[3],
+                    'reappeared_lon': curr[2],
+                    'reappeared_sog': curr[4],
+                    'zones_before': [{'name': z[0], 'type': z[1]} for z in zones_before],
+                    'zones_after': [{'name': z[0], 'type': z[1]} for z in zones_after],
+                    'reasons_suspicious': reasons_suspicious,
+                    'reasons_benign': reasons_benign,
+                }
+                if clustered_episode_count >= REPEATED_SILENCE_THRESHOLD:
+                    alert_details['repeated_silences_24h'] = clustered_episode_count
+
                 alerts.append({
                     'mmsi': mmsi,
                     'alert_type': 'ais_silence',
@@ -170,22 +205,7 @@ def detect_ais_silence():
                     'observed_at': prev[1],
                     'lon': prev[2],
                     'lat': prev[3],
-                    'details': {
-                        'gap_minutes': round(gap_minutes, 1),
-                        'distance_during_gap_nm': round(distance_nm, 2),
-                        'last_seen': prev[1].isoformat(),
-                        'last_lat': prev[3],
-                        'last_lon': prev[2],
-                        'last_sog': prev[4],
-                        'reappeared_at': curr[1].isoformat(),
-                        'reappeared_lat': curr[3],
-                        'reappeared_lon': curr[2],
-                        'reappeared_sog': curr[4],
-                        'zones_before': [{'name': z[0], 'type': z[1]} for z in zones_before],
-                        'zones_after': [{'name': z[0], 'type': z[1]} for z in zones_after],
-                        'reasons_suspicious': reasons_suspicious,
-                        'reasons_benign': reasons_benign,
-                    },
+                    'details': alert_details,
                     'explanation': (
                         f"Vessel {mmsi} went silent for {gap_minutes:.0f} minutes "
                         f"and moved {distance_nm:.1f} nm during gap. "
@@ -193,14 +213,6 @@ def detect_ais_silence():
                         + (f"Possibly benign: {'; '.join(reasons_benign)}." if reasons_benign else "")
                     )
                 })
-
-        # Cluster check: multiple silence episodes for same vessel
-        if len(episodes) >= 3:
-            # Boost severity of all alerts for this vessel
-            for a in alerts:
-                if a['mmsi'] == mmsi and a['alert_type'] == 'ais_silence':
-                    a['severity'] = min(a['severity'] + 0.1, 1.0)
-                    a['details']['repeated_silences'] = len(episodes)
 
     # Insert alerts
     if alerts:

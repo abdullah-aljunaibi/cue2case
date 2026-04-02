@@ -76,13 +76,26 @@ def normalize_details(details):
     return {"raw": details}
 
 
+def round_to_nearest_hour(timestamp):
+    """Round datetimes to the nearest hour for stable case signatures."""
+    if timestamp is None:
+        return None
+
+    rounded = timestamp.replace(minute=0, second=0, microsecond=0)
+    if timestamp - rounded >= timedelta(minutes=30):
+        rounded += timedelta(hours=1)
+    return rounded
+
+
 def case_signature(mmsi, title, start_observed_at, end_observed_at):
     """Build a deterministic signature that survives case rebuilds."""
+    rounded_start = round_to_nearest_hour(start_observed_at)
+    rounded_end = round_to_nearest_hour(end_observed_at)
     return (
         str(mmsi),
         title or "",
-        start_observed_at.isoformat() if start_observed_at is not None else None,
-        end_observed_at.isoformat() if end_observed_at is not None else None,
+        rounded_start.isoformat() if rounded_start is not None else None,
+        rounded_end.isoformat() if rounded_end is not None else None,
     )
 
 
@@ -120,6 +133,26 @@ def cluster_alerts_by_incident(alerts_list):
     return incidents
 
 
+def format_zone_context(zone_context):
+    """Convert zone context payloads into concise user-facing text."""
+    if not zone_context:
+        return None
+
+    zones = zone_context.get("zones") if isinstance(zone_context, dict) else None
+    if not zones:
+        return None
+
+    zone_names = [
+        zone.get("name")
+        for zone in zones
+        if isinstance(zone, dict) and zone.get("name")
+    ]
+    if not zone_names:
+        return None
+
+    return f"zones: {', '.join(zone_names)}"
+
+
 def summarize_key_events(alerts_list):
     """Build short incident timeline highlights from alerts."""
     distinct_events = []
@@ -131,9 +164,9 @@ def summarize_key_events(alerts_list):
         details = alert["details"]
 
         context_parts = []
-        zone_context = details.get("zone_context")
-        if zone_context:
-            context_parts.append(f"zone={zone_context}")
+        formatted_zone_context = format_zone_context(details.get("zone_context"))
+        if formatted_zone_context:
+            context_parts.append(formatted_zone_context)
 
         explanation = alert.get("explanation")
         if explanation:
