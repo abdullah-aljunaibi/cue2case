@@ -240,7 +240,8 @@ export default function MapPage() {
         return;
       }
 
-      const L = require('leaflet');
+      const L = (window as any).L;
+      if (!L) { console.error('Leaflet not loaded from CDN'); return; }
 
       if (cancelled || !mapElementRef.current) {
         return;
