@@ -260,9 +260,11 @@ def _build_benign_context(vessel_type: Optional[int], cues: List[Dict[str, Any]]
     return None
 
 
-def compute_score_breakdown(case_id: str) -> Dict[str, Any]:
+def compute_score_breakdown(case_id: str, conn: Optional[Any] = None) -> Dict[str, Any]:
     """Compute explainable score breakdown for a case."""
-    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    owns_connection = conn is None
+    if conn is None:
+        conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
     try:
         with conn.cursor() as cur:
             cur.execute(
@@ -371,7 +373,8 @@ def compute_score_breakdown(case_id: str) -> Dict[str, Any]:
         }
         return breakdown
     finally:
-        conn.close()
+        if owns_connection:
+            conn.close()
 
 
 def batch_score_cases(case_ids: Optional[List[str]] = None) -> int:
@@ -380,13 +383,6 @@ def batch_score_cases(case_ids: Optional[List[str]] = None) -> int:
     updated = 0
     try:
         with conn.cursor() as cur:
-            cur.execute(
-                """
-                ALTER TABLE investigation_case
-                ADD COLUMN IF NOT EXISTS score_breakdown jsonb
-                """
-            )
-
             if case_ids is None:
                 cur.execute(
                     """
@@ -409,19 +405,23 @@ def batch_score_cases(case_ids: Optional[List[str]] = None) -> int:
             target_ids = [str(row["id"]) for row in cur.fetchall()]
 
         for target_id in target_ids:
-            breakdown = compute_score_breakdown(target_id)
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    UPDATE investigation_case
-                    SET rank_score = %s,
-                        score_breakdown = %s,
-                        updated_at = NOW()
-                    WHERE id = %s
-                    """,
-                    (breakdown["rank_score"], Json(breakdown), target_id),
-                )
-                updated += cur.rowcount
+            try:
+                breakdown = compute_score_breakdown(target_id, conn=conn)
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        UPDATE investigation_case
+                        SET rank_score = %s,
+                            score_breakdown = %s,
+                            updated_at = NOW()
+                        WHERE id = %s
+                        """,
+                        (breakdown["rank_score"], Json(breakdown), target_id),
+                    )
+                    updated += cur.rowcount
+            except Exception as exc:
+                print(f"Failed to score case {target_id}: {exc}")
+                conn.rollback()
 
         conn.commit()
         return updated

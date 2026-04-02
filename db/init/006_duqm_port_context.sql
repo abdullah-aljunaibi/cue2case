@@ -1,6 +1,6 @@
 -- Add Duqm-oriented port context tables and case zone context support.
 
-CREATE TABLE port_profile (
+CREATE TABLE IF NOT EXISTS port_profile (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     profile_key VARCHAR(50) NOT NULL UNIQUE,
     name VARCHAR(255) NOT NULL,
@@ -11,7 +11,7 @@ CREATE TABLE port_profile (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE operational_zone (
+CREATE TABLE IF NOT EXISTS operational_zone (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     profile_id UUID NOT NULL REFERENCES port_profile(id),
     name VARCHAR(255) NOT NULL,
@@ -35,7 +35,7 @@ CREATE TABLE operational_zone (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE approach_corridor (
+CREATE TABLE IF NOT EXISTS approach_corridor (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     profile_id UUID NOT NULL REFERENCES port_profile(id),
     name VARCHAR(255) NOT NULL,
@@ -48,7 +48,7 @@ CREATE TABLE approach_corridor (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE critical_area (
+CREATE TABLE IF NOT EXISTS critical_area (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     profile_id UUID NOT NULL REFERENCES port_profile(id),
     name VARCHAR(255) NOT NULL,
@@ -63,12 +63,12 @@ CREATE TABLE critical_area (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_operational_zone_geom ON operational_zone USING GIST(geom);
-CREATE INDEX idx_approach_corridor_geom ON approach_corridor USING GIST(geom);
-CREATE INDEX idx_critical_area_geom ON critical_area USING GIST(geom);
-CREATE INDEX idx_operational_zone_profile ON operational_zone(profile_id);
-CREATE INDEX idx_approach_corridor_profile ON approach_corridor(profile_id);
-CREATE INDEX idx_critical_area_profile ON critical_area(profile_id);
+CREATE INDEX IF NOT EXISTS idx_operational_zone_geom ON operational_zone USING GIST(geom);
+CREATE INDEX IF NOT EXISTS idx_approach_corridor_geom ON approach_corridor USING GIST(geom);
+CREATE INDEX IF NOT EXISTS idx_critical_area_geom ON critical_area USING GIST(geom);
+CREATE INDEX IF NOT EXISTS idx_operational_zone_profile ON operational_zone(profile_id);
+CREATE INDEX IF NOT EXISTS idx_approach_corridor_profile ON approach_corridor(profile_id);
+CREATE INDEX IF NOT EXISTS idx_critical_area_profile ON critical_area(profile_id);
 
 ALTER TABLE investigation_case
 ADD COLUMN zone_context JSONB DEFAULT '{}';

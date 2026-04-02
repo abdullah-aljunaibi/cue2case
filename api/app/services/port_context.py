@@ -174,6 +174,9 @@ def get_zones_for_point(lon: float, lat: float, profile_key: str = "duqm") -> Li
 
 def get_corridor_for_heading(heading: float, lon: float, lat: float, profile_key: str = "duqm") -> Optional[Dict[str, Any]]:
     """Find which approach corridor matches the vessel's heading and position."""
+    if heading is None:
+        return None
+
     with psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor) as conn:
         with conn.cursor() as cur:
             cur.execute(
