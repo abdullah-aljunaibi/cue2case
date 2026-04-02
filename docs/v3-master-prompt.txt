@@ -1,0 +1,468 @@
+You are a coordinated multi-agent engineering swarm working on the GitHub repo `cue2case`.
+
+Mission
+Ship a high-impact Cue2Case v3 interview build in 2–3 hours: a Duqm-ready, operator-first maritime caseworkbench that turns anomalies into explainable actions and looks like a tactical operations product, not a generic demo dashboard.
+
+North star
+Every case must answer, immediately:
+1. What happened?
+2. Why am I seeing this now?
+3. How sure is the system?
+4. What evidence supports it?
+5. What benign explanation might exist?
+6. What should the operator do next?
+
+Ground rules
+- Optimize for a convincing demo, not full production hardening.
+- Preserve current local startup flow.
+- Do additive work; do not rewrite the whole app.
+- Prefer branch-per-workstream and merge only after passing local checks.
+- Reuse the current repo structure and current schema where possible.
+- Use existing trust metadata (`rank_score`, `primary_geom`, `start_observed_at`, `end_observed_at`, `case_evidence.observed_at`, `timeline_order`, `pipeline_run`, `run_id`) rather than inventing duplicate tracking models.
+- Use existing case workflow primitives (`status`, `priority`, `recommended_action`, `assigned_to`, `analyst_note`, `audit_log`) and extend them, do not bypass them.
+- If live data is unavailable, degrade gracefully to seeded and clearly labeled synthetic/public-demo data.
+- Do not overclaim private or operational data access. Public-source cues must be labeled public-source. Simulated cues must be labeled synthetic/demo.
+- UI may be inspired by the attached OKB screenshot, but do not clone brand assets or copy the exact interface.
+
+Priority split
+P0 = must ship
+P1 = ship if time remains
+P2 = nice-to-have only if almost free
+
+P0 scope
+- Duqm port-context engine
+- Explainable ranking with “Why now”
+- Incident replay / timeline story
+- Operator actions and audit-friendly workflow
+- Tactical UI reskin and layout
+- Seeded Duqm scenario pack
+- Updated docs/demo script
+- Smoke checks for the new v3 path
+
+P1 scope
+- Provider adapter abstraction with one real adapter or stubbed real adapter
+- Weather cue integration
+- Watchlist cue integration
+- Export incident brief
+
+P2 scope
+- Bilingual labels
+- Imagery metadata cards
+- Live polling UI
+
+Team topology
+Agent 0 = Lead Integrator / PM
+Agent 1 = Data + Geospatial + Duqm Context
+Agent 2 = Backend Workflow + Replay
+Agent 3 = Scoring + Cue Fusion + Ingest Adapters
+Agent 4 = Frontend Tactical UI
+Agent 5 = QA + Docs + Demo
+
+Execution cadence
+Phase 1 (first 10–15 min):
+- Agent 0 scans repo, confirms file ownership, creates a task board, and assigns non-overlapping file regions.
+- All agents inspect current code before editing.
+- Agent 0 enforces P0/P1/P2 boundaries.
+
+Phase 2 (next 75–100 min):
+- Agents build in parallel.
+- Each agent ships a minimal working slice first, then polishes.
+
+Phase 3 (next 30–40 min):
+- Integrator merges, resolves conflicts, runs stack, fixes broken contracts.
+- QA agent runs smoke/demo validation.
+- Docs agent updates README and demo narrative.
+
+Success criteria
+The finished build should:
+- Start locally with existing compose flow.
+- Show a Duqm-specific scenario pack out of the box.
+- Replace the hardcoded approach assumption with port/corridor-aware rules.
+- Show a case queue ranked by urgency and freshness.
+- Show “Why now” and score breakdown on each case.
+- Show replay/timeline for a case.
+- Let the operator acknowledge, assign, dismiss with reason, escalate, and add notes.
+- Show cues (public or synthetic) that can change a case’s rank.
+- Look like a tactical operator console.
+- Include updated README/docs and a short CTO demo flow.
+- Pass current smoke checks plus one new v3 smoke/e2e check.
+
+Repo-aware implementation plan
+
+1) DUQM PORT-CONTEXT ENGINE (P0)
+Owner: Agent 1
+
+Goal
+Replace flat/demo geofence logic with a Duqm-first port profile system so detectors and UI reason about local zones, corridors, and critical areas.
+
+Create/add
+- `db/init/006_duqm_port_context.sql`
+- `api/app/services/port_context.py`
+- `scripts/seed_duqm_profile.py`
+- optional seed JSON under `scripts/data/duqm_profile.json`
+
+Schema additions (additive migration only)
+- `port_profile`
+- `operational_zone`
+- `approach_corridor`
+- `critical_area`
+- optional `local_rule`
+
+Minimum fields
+- stable id
+- profile key (`duqm`)
+- name
+- zone type
+- geometry
+- optional metadata jsonb
+- optional bilingual labels (`label_en`, `label_ar`) if low effort
+
+Implementation requirements
+- Do not delete current `geofence`; keep backwards compatibility.
+- Add a normalization layer so existing geofence data can coexist with port-profile data.
+- Replace hardcoded inbound heading logic in `abnormal_approach.py` with corridor-specific expected headings / bearings / entry rules from `port_context.py`.
+- Make zone/corridor lookup reusable by all detectors and the API.
+
+Data sources to use
+- Port of Duqm Port Rules / nautical chart references
+- Port of Duqm Nautical Information and Procedures/Forms
+- SEZAD interactive map
+- Where exact geometry is unavailable, use clearly labeled approximate demo polygons derived from public material.
+
+Acceptance
+- `abnormal_approach` no longer uses a single global expected heading range.
+- Case detail shows Duqm corridor/zone context.
+- At least one Duqm approach corridor and one critical area appear in the UI.
+
+2) BACKEND WORKFLOW + REPLAY (P0)
+Owner: Agent 2
+
+Goal
+Turn the project from anomaly viewing into operator workflow.
+
+Create/add
+- `db/init/007_operator_workflow.sql`
+- `api/app/services/replay.py`
+- extend `api/app/routers/cases.py`
+- optional `api/app/routers/replay.py`
+- `api/app/schemas/replay.py` if project uses pydantic schemas
+
+Workflow additions
+- disposition reason table or enum
+- case action log or action helper
+- follow-up task model only if almost free
+- export-brief endpoint returning markdown/json/plaintext
+
+Required actions
+- acknowledge
+- assign
+- dismiss with reason
+- escalate
+- mark under review
+- add operator note
+- export brief
+
+Replay requirements
+- Build a replay endpoint that returns a time-ordered story made from:
+  - AIS positions
+  - alerts
+  - case evidence
+  - external cues
+  - note/activity events
+- Reuse existing `case_evidence.observed_at` and `timeline_order`.
+- Output should be easy for the frontend to animate or step through.
+
+API contract changes
+- Add `why_now`
+- Add `score_breakdown`
+- Add `replay_summary` or replay endpoint
+- Add `allowed_actions`
+- Do not break existing `/cases` and `/cases/{id}` without updating the frontend and smoke tests.
+
+Acceptance
+- Operator can change status, assign owner, add note, and dismiss/escalate.
+- Audit trail remains intact.
+- Replay endpoint returns ordered events for at least seeded scenarios.
+
+3) SCORING + CUE FUSION + INGEST ADAPTERS (P0/P1)
+Owner: Agent 3
+
+Goal
+Make ranking explainable and cue-aware, while moving ingest toward adapter-based design.
+
+Create/add
+- `api/app/services/scoring.py`
+- `api/app/services/cue_fusion.py`
+- `api/app/services/ingestion.py`
+- `api/app/adapters/csv.py`
+- `api/app/adapters/aishub.py`
+- `api/app/adapters/vtexplorer.py`
+- `scripts/import_watchlists.py`
+- `scripts/import_weather_cues.py`
+- optional `scripts/import_demo_cues.py`
+
+Scoring model
+Produce a transparent rank score from components such as:
+- behavior severity
+- zone criticality
+- cue corroboration
+- freshness / recent escalation
+- identity/watchlist risk
+- uncertainty penalty
+- benign-context offsets
+
+Every case must have:
+- `score_breakdown`
+- `why_now`
+- `top_reasons`
+- `confidence_explainer`
+- `missing_evidence` if relevant
+
+Why-now examples
+- new cue attached in last X minutes
+- case entered critical zone
+- rank increased by Y
+- unresolved and still active
+- watchlist corroboration
+- AIS silence near approach corridor
+
+Cue fusion
+Extend cue taxonomy additively beyond current set.
+Target new types:
+- `satellite_contact`
+- `marine_weather`
+- `watchlist_hit`
+- `port_ops`
+- `vhf_summary`
+- `operator_intel`
+- `imagery`
+- `rf_detection`
+
+Ingest adapter architecture
+- Create a canonical event model; do not keep all provider logic inside one batch script.
+- Keep current CSV ingest working through the new adapter path.
+- If keys are present, implement one real pull path for AISHub or VT Explorer.
+- If keys are absent, keep provider adapters stubbed but structurally correct and documented.
+
+Public data use
+- AIS: AISHub or VT Explorer
+- weather: Open-Meteo Marine
+- watchlist: OFAC and UN 1718 vessel list
+- imagery: metadata cue or placeholder card only; do not block on actual image processing
+
+Acceptance
+- Case rank is explainable.
+- A cue can change a case rank and visibly update “Why now”.
+- CSV ingest still works.
+- Optional real adapter works if credentials exist, otherwise demo remains fully usable.
+
+4) FRONTEND TACTICAL UI (P0)
+Owner: Agent 4
+
+Goal
+Make the UI feel like an operations console and organize it around operator decisions.
+
+Primary layout
+- Left: case queue / real-time alert worklist
+- Center: tactical map + replay/timeline
+- Right: selected vessel/case details + actions + score breakdown
+
+Required UI elements
+- “Why now” pill/badge near priority
+- score breakdown card
+- confidence + benign explanation card
+- cue corroboration strip
+- operator actions panel
+- replay timeline panel
+- zone/corridor badges
+- export brief button
+
+Visual direction
+- dark tactical theme
+- high contrast alert hierarchy
+- compact density
+- better use of badges/chips/status
+- fewer generic dashboard cards
+- preserve readability
+
+Files to inspect/change
+- `web/app/...`
+- `web/components/...`
+- add dedicated components for:
+  - `CaseScoreBreakdown`
+  - `WhyNowBadge`
+  - `CaseReplay`
+  - `OperatorActions`
+  - `CueStrip`
+  - `VesselSummaryPanel`
+
+Map behavior
+- center on case primary geometry
+- overlay Duqm zones/corridors
+- show cue markers
+- replay path scrubber if feasible
+
+Acceptance
+- Opening a case clearly answers what happened and what to do next.
+- Tactical layout works without hunting through tabs.
+- Duqm scenario is visually obvious.
+- Replay and score breakdown are both visible in the main operator flow.
+
+5) QA + DOCS + DEMO (P0)
+Owner: Agent 5
+
+Goal
+Make the build stable, demoable, and self-explanatory.
+
+Create/add
+- `scripts/seed_duqm_scenarios.py`
+- `scripts/v3-smoke-check.sh`
+- `docs/v3-demo-script.md`
+- `docs/v3-architecture.md`
+- `docs/v3-scenarios.md`
+- update `README.md`
+
+Scenario pack
+Seed at least 3 Duqm-centered stories:
+1. suspicious approach with intermittent AIS near a critical area
+2. loitering near approach, downgraded by weather/benign context
+3. watchlist-linked vessel with corroborating cue and escalation path
+
+Each scenario should include:
+- vessel identity summary
+- AIS path / segment data
+- alerts
+- case record
+- evidence timeline
+- at least one cue
+- operator action recommendation
+
+Docs must include
+- what changed in v3
+- how to run
+- demo path in under 3 minutes
+- architecture diagram or architecture section
+- what is real vs synthetic in the demo
+- known limitations
+- follow-on roadmap
+
+Tests
+- run existing smoke check
+- add v3 smoke/e2e script validating:
+  - cases list returns `why_now`
+  - case detail returns `score_breakdown`
+  - replay endpoint works
+  - operator action update works
+  - seeded Duqm profile exists
+
+Acceptance
+- A new person can run the repo and demo v3 quickly.
+- The docs are honest and strong enough for a CTO walkthrough.
+
+6) LEAD INTEGRATOR / PM (P0)
+Owner: Agent 0
+
+Goal
+Keep the sprint coherent and shippable.
+
+Responsibilities
+- assign exact file ownership to avoid merge collisions
+- define branch names
+- enforce additive migrations rather than editing old migrations
+- ensure old flows still work
+- reject overengineering
+- merge P0 first, P1 only if safe
+- produce final release summary
+
+Suggested branch split
+- `v3/duqm-context`
+- `v3/workflow-replay`
+- `v3/scoring-cues-ingest`
+- `v3/tactical-ui`
+- `v3/qa-docs`
+
+Mandatory integration rules
+- No agent edits another agent’s owned files without sync.
+- All new backend response fields must be documented and consumed by UI where relevant.
+- Update smoke checks after API changes.
+- Do one final pass for naming consistency:
+  - Duqm
+  - corridor
+  - critical area
+  - why now
+  - score breakdown
+  - cue corroboration
+
+Concrete repo-aware guidance
+
+Backend must reuse current primitives
+- `investigation_case.status`
+- `priority`
+- `recommended_action`
+- `assigned_to`
+- `analyst_note`
+- `audit_log`
+- `rank_score`
+- `primary_geom`
+- `start_observed_at`
+- `end_observed_at`
+- `case_evidence.observed_at`
+- `timeline_order`
+- `pipeline_run`
+- `alert.run_id`
+- `investigation_case.run_id`
+
+Do not do these things
+- Do not rewrite the whole stack.
+- Do not introduce full auth/permissions beyond what is needed for the demo.
+- Do not block on real satellite/image processing.
+- Do not wait for perfect port geometry; use approximate, labeled demo geometry if needed.
+- Do not remove backwards compatibility unless necessary.
+- Do not hide synthetic data provenance.
+
+Helpful operator design principles
+- Prefer “top 3 reasons” over giant explanations.
+- Show severity and confidence separately.
+- Always show a possible benign explanation when one exists.
+- Make the next recommended action obvious.
+- Show freshness and escalation, not just total risk.
+- Reduce clicks: one screen should support triage.
+
+Definition of done for the final merged build
+- A CTO can open the app and immediately see:
+  - ranked queue
+  - tactical map
+  - vessel/case pane
+  - why-now reasoning
+  - score breakdown
+  - replay timeline
+  - operator actions
+- The demo opens on a Duqm scenario by default.
+- Docs clearly explain architecture, data sources, and limitations.
+- The app tells a story: detect → explain → review → decide → record.
+
+Final deliverables from the swarm
+1. merged code
+2. migration files
+3. seed scripts
+4. updated docs
+5. one-paragraph release note
+6. one-paragraph CTO demo script
+7. known limitations list
+8. optional screenshot/gif list of the best UI states
+
+Required final response format from each agent
+- Files changed
+- Summary of what was implemented
+- Anything left incomplete
+- Commands to run
+- Risks / assumptions
+
+Start now.
+First action:
+- Agent 0 scans the repo and assigns ownership.
+- Agent 1 starts Duqm context migration and seed.
+- Agent 2 starts replay + workflow endpoints.
+- Agent 3 starts scoring service and cue adapter skeleton.
+- Agent 4 starts tactical layout and case detail redesign.
+- Agent 5 starts scenario seeding plan and v3 smoke script.
