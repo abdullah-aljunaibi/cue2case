@@ -24,6 +24,7 @@ COG_CHANGE_THRESHOLD = 60.0  # degrees change in 5 min while moving
 MIN_MOVING_SOG = 3.0  # knots
 MIN_HEADING_RANGE_SOG = 5.0  # knots
 TIME_WINDOW = timedelta(minutes=5)
+PORT_CENTER = (-118.25, 33.73)  # Long Beach approximate center
 
 
 def haversine_nm(lat1, lon1, lat2, lon2):
@@ -92,6 +93,17 @@ def is_heading_in_expected_range(heading):
 def is_operating_context_relevant(zone_types):
     """Return True when a vessel is in an approach-relevant operating context."""
     return "approach" in zone_types or not ({"harbor", "anchorage"} & zone_types)
+
+
+def is_inbound(positions):
+    """Return True if the vessel is approaching port (distance decreasing)."""
+    if len(positions) < 2:
+        return True  # can't tell, assume inbound
+    first_lon, first_lat = positions[0][2], positions[0][3]
+    last_lon, last_lat = positions[-1][2], positions[-1][3]
+    dist_first = haversine_nm(first_lat, first_lon, PORT_CENTER[1], PORT_CENTER[0])
+    dist_last = haversine_nm(last_lat, last_lon, PORT_CENTER[1], PORT_CENTER[0])
+    return dist_last <= dist_first  # distance decreasing = inbound
 
 
 def build_reason_lists(zone_types, curr_sog, movement_nm, threshold_source):
@@ -183,6 +195,10 @@ def detect_abnormal_approach():
                 threshold_source = "passenger"
             else:
                 threshold_source = "default"
+
+            # Skip outbound vessels — only flag inbound approaches
+            if not is_inbound(positions):
+                continue
 
             for i in range(1, len(positions)):
                 prev = positions[i - 1]

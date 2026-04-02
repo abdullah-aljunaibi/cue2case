@@ -164,55 +164,83 @@ def detect_loitering():
             if duration >= MIN_STOP_DURATION_SEC:
                 stop_episodes.append((current_stop_start, current_stop_positions[-1][1], len(current_stop_positions)))
 
-        # --- Stop-Start Pattern Alert ---
+        # --- Stop-Start Pattern Alerts (clustered by 2-hour proximity) ---
         if len(stop_episodes) >= MIN_STOP_START_EPISODES:
-            mid = positions[len(positions) // 2]
-            zones = check_geofence_context(cur_geo, mid[2], mid[3])
-            zone_types = {z[1] for z in zones}
+            # Cluster episodes within 2 hours of each other
+            clusters = []
+            current_cluster = [stop_episodes[0]]
+            for ep in stop_episodes[1:]:
+                if (ep[0] - current_cluster[-1][1]).total_seconds() <= 7200:  # 2 hours
+                    current_cluster.append(ep)
+                else:
+                    clusters.append(current_cluster)
+                    current_cluster = [ep]
+            clusters.append(current_cluster)
 
-            # Stop-start in anchorage/harbor is normal; elsewhere suspicious
-            if 'restricted' in zone_types:
-                severity = min(len(stop_episodes) / 6.0 + 0.3, 1.0)
-            elif 'anchorage' in zone_types or 'harbor' in zone_types:
-                severity = max(len(stop_episodes) / 15.0, 0.1)
-            else:
-                severity = min(len(stop_episodes) / 8.0, 1.0)
+            for cluster in clusters:
+                if len(cluster) < MIN_STOP_START_EPISODES:
+                    continue
 
-            reasons_suspicious = []
-            reasons_benign = []
+                # Find positions in this cluster's time range
+                cluster_start = cluster[0][0]
+                cluster_end = cluster[-1][1]
+                cluster_positions = [
+                    p for p in positions
+                    if cluster_start <= p[1] <= cluster_end
+                ]
+                if not cluster_positions:
+                    continue
 
-            if 'restricted' in zone_types:
-                reasons_suspicious.append("near restricted zone")
-            if len(stop_episodes) >= 5:
-                reasons_suspicious.append(f"high stop count ({len(stop_episodes)} episodes)")
-            if 'anchorage' in zone_types:
-                reasons_benign.append("in designated anchorage area")
-            if 'harbor' in zone_types:
-                reasons_benign.append("in harbor operations zone")
+                # Centroid of cluster positions
+                avg_lon = sum(p[2] for p in cluster_positions) / len(cluster_positions)
+                avg_lat = sum(p[3] for p in cluster_positions) / len(cluster_positions)
 
-            alerts.append({
-                'mmsi': mmsi,
-                'alert_type': 'loitering',
-                'severity': max(0.05, min(round(severity, 3), 1.0)),
-                'observed_at': positions[0][1],
-                'lon': mid[2],
-                'lat': mid[3],
-                'details': {
-                    'sub_type': 'stop_start_pattern',
-                    'stop_episodes': len(stop_episodes),
-                    'total_positions': len(positions),
-                    'min_stop_duration_sec': MIN_STOP_DURATION_SEC,
-                    'zone_context': [{'name': z[0], 'type': z[1]} for z in zones],
-                    'reasons_suspicious': reasons_suspicious,
-                    'reasons_benign': reasons_benign,
-                },
-                'explanation': (
-                    f"Vessel {mmsi} exhibited repeated stop-start behavior "
-                    f"({len(stop_episodes)} episodes, each ≥{MIN_STOP_DURATION_SEC}s). "
-                    + (f"Suspicious: {'; '.join(reasons_suspicious)}. " if reasons_suspicious else "")
-                    + (f"Possibly benign: {'; '.join(reasons_benign)}." if reasons_benign else "")
-                )
-            })
+                zones = check_geofence_context(cur_geo, avg_lon, avg_lat)
+                zone_types = {z[1] for z in zones}
+
+                if 'restricted' in zone_types:
+                    severity = min(len(cluster) / 6.0 + 0.3, 1.0)
+                elif 'anchorage' in zone_types or 'harbor' in zone_types:
+                    severity = max(len(cluster) / 15.0, 0.1)
+                else:
+                    severity = min(len(cluster) / 8.0, 1.0)
+
+                reasons_suspicious = []
+                reasons_benign = []
+
+                if 'restricted' in zone_types:
+                    reasons_suspicious.append("near restricted zone")
+                if len(cluster) >= 5:
+                    reasons_suspicious.append(f"high stop count ({len(cluster)} episodes)")
+                if 'anchorage' in zone_types:
+                    reasons_benign.append("in designated anchorage area")
+                if 'harbor' in zone_types:
+                    reasons_benign.append("in harbor operations zone")
+
+                alerts.append({
+                    'mmsi': mmsi,
+                    'alert_type': 'loitering',
+                    'severity': max(0.05, min(round(severity, 3), 1.0)),
+                    'observed_at': cluster_start,
+                    'lon': avg_lon,
+                    'lat': avg_lat,
+                    'details': {
+                        'sub_type': 'stop_start_pattern',
+                        'stop_episodes': len(cluster),
+                        'cluster_start': cluster_start.isoformat(),
+                        'cluster_end': cluster_end.isoformat(),
+                        'min_stop_duration_sec': MIN_STOP_DURATION_SEC,
+                        'zone_context': [{'name': z[0], 'type': z[1]} for z in zones],
+                        'reasons_suspicious': reasons_suspicious,
+                        'reasons_benign': reasons_benign,
+                    },
+                    'explanation': (
+                        f"Vessel {mmsi} exhibited repeated stop-start behavior "
+                        f"({len(cluster)} episodes in {(cluster_end - cluster_start).total_seconds() / 3600:.1f}h window, each ≥{MIN_STOP_DURATION_SEC}s). "
+                        + (f"Suspicious: {'; '.join(reasons_suspicious)}. " if reasons_suspicious else "")
+                        + (f"Possibly benign: {'; '.join(reasons_benign)}." if reasons_benign else "")
+                    )
+                })
 
     # Insert alerts
     if alerts:
