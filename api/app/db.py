@@ -11,7 +11,7 @@ from psycopg2.extras import RealDictCursor
 
 
 def get_database_url() -> str:
-    database_url = os.getenv("DATABASE_URL") or os.getenv("DATABASE_URL_ASYNC")
+    database_url = os.getenv("DATABASE_URL") or os.getenv("DATABASE_URL_SYNC") or os.getenv("DATABASE_URL_ASYNC")
     if not database_url:
         raise HTTPException(status_code=500, detail="Database URL is not configured")
     if database_url.startswith("postgresql+asyncpg://"):

@@ -237,6 +237,12 @@ def _build_why_now(case_row: Dict[str, Any], alerts: List[Dict[str, Any]], cues:
 
 
 def _build_benign_context(vessel_type: Optional[int], cues: List[Dict[str, Any]], case_row: Dict[str, Any]) -> Optional[str]:
+    # Never provide benign context if watchlist/sanctions cues are present
+    for cue in cues:
+        data = _as_dict(cue.get("data"))
+        if data.get("watchlist_hit") or data.get("ofac_match") or data.get("sanctions_match"):
+            return None
+
     weather = False
     similar_patterns = 0
     for cue in cues:

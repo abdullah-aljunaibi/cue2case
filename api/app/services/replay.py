@@ -61,7 +61,8 @@ def _narrative_for_cue(cue: Dict[str, Any]) -> str:
     source = cue.get("source") or "external source"
     if data.get("ofac_match") or data.get("watchlist_hit") or data.get("sanctions_match"):
         confidence = data.get("confidence") or data.get("level") or "high"
-        return f"External cue: OFAC watchlist match (confidence: {confidence})"
+        list_name = data.get("list_name") or data.get("source_list") or "watchlist"
+        return f"External cue: {list_name} match (confidence: {confidence})"
     summary = data.get("summary") or data.get("description") or data.get("label")
     if summary:
         return f"External cue from {source}: {summary}"
@@ -202,8 +203,8 @@ def build_replay(case_id: str) -> Dict[str, Any]:
                     "event_type": "position",
                     "data": {
                         "id": position["id"],
-                        "lon": float(position["lon"]),
-                        "lat": float(position["lat"]),
+                        "lon": float(position["lon"]) if position.get("lon") is not None else None,
+                        "lat": float(position["lat"]) if position.get("lat") is not None else None,
                         "sog": float(position["sog"]) if position.get("sog") is not None else None,
                         "cog": float(position["cog"]) if position.get("cog") is not None else None,
                         "heading": float(position["heading"]) if position.get("heading") is not None else None,
