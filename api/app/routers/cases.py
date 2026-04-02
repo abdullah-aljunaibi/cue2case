@@ -82,6 +82,7 @@ async def get_case(case_id: UUID):
             ic.summary,
             ic.recommended_action,
             ic.assigned_to,
+            ic.zone_context,
             ic.start_observed_at,
             ic.end_observed_at,
             ic.created_at,
@@ -129,6 +130,15 @@ async def get_case(case_id: UUID):
         "lat": case_data.pop("primary_lat"),
     }
     case_data["evidence"] = [normalize_row(dict(row)) for row in evidence_rows]
+
+    # Add live score breakdown
+    try:
+        from app.services.scoring import compute_score_breakdown
+
+        case_data["score"] = compute_score_breakdown(case_id_str)
+    except Exception:
+        case_data["score"] = None
+
     return case_data
 
 
@@ -359,3 +369,132 @@ async def list_case_audit_log(case_id: UUID):
         rows = cursor.fetchall()
 
     return [normalize_row(dict(row)) for row in rows]
+
+
+@router.get("/{case_id}/replay")
+async def get_case_replay(case_id: UUID):
+    """Get time-ordered incident replay for a case."""
+    from app.services.replay import build_replay
+
+    case_id_str = str(case_id)
+
+    with get_db_cursor() as cursor:
+        cursor.execute("SELECT 1 FROM investigation_case WHERE id = %s", [case_id_str])
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Case not found")
+
+    return build_replay(case_id_str)
+
+
+@router.get("/{case_id}/score")
+async def get_case_score(case_id: UUID):
+    """Get explainable score breakdown for a case."""
+    from app.services.scoring import compute_score_breakdown
+
+    case_id_str = str(case_id)
+
+    with get_db_cursor() as cursor:
+        cursor.execute("SELECT 1 FROM investigation_case WHERE id = %s", [case_id_str])
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Case not found")
+
+    return compute_score_breakdown(case_id_str)
+
+
+@router.post("/{case_id}/actions")
+async def perform_case_action(
+    case_id: UUID,
+    payload: Dict[str, Any] = Body(default={}),
+):
+    """Perform a workflow action: acknowledge, assign, dismiss, escalate, mark_under_review, export_brief."""
+    action = payload.get("action")
+    actor = payload.get("actor", "system")
+    reason = payload.get("reason", "")
+    assignee = payload.get("assignee")
+
+    valid_actions = {"acknowledge", "assign", "dismiss", "escalate", "mark_under_review", "export_brief"}
+    if action not in valid_actions:
+        raise HTTPException(status_code=400, detail=f"action must be one of {sorted(valid_actions)}")
+
+    case_id_str = str(case_id)
+    status_map = {
+        "acknowledge": "in_review",
+        "assign": "in_review",
+        "dismiss": "dismissed",
+        "escalate": "escalated",
+        "mark_under_review": "in_review",
+    }
+
+    with get_db_cursor() as cursor:
+        cursor.execute(
+            "SELECT id, status, assigned_to, title, mmsi FROM investigation_case WHERE id = %s",
+            [case_id_str],
+        )
+        current = cursor.fetchone()
+        if not current:
+            raise HTTPException(status_code=404, detail="Case not found")
+
+        if action == "export_brief":
+            from app.services.replay import build_replay
+            from app.services.scoring import compute_score_breakdown
+
+            score = compute_score_breakdown(case_id_str)
+            replay = build_replay(case_id_str)
+            brief = f"# Case Brief: {current['title']}\n\n"
+            brief += f"**MMSI:** {current['mmsi']}\n"
+            brief += f"**Status:** {current['status']}\n"
+            brief += f"**Rank Score:** {score.get('rank_score', 'N/A')}\n\n"
+            brief += "## Why Now\n"
+            for reason_item in score.get("why_now", []):
+                brief += f"- {reason_item}\n"
+            brief += "\n## Top Reasons\n"
+            for reason_item in score.get("top_reasons", []):
+                brief += f"- {reason_item}\n"
+            brief += f"\n## Confidence\n{score.get('confidence_explainer', 'N/A')}\n"
+            if score.get("benign_context"):
+                brief += f"\n## Benign Context\n{score['benign_context']}\n"
+            brief += f"\n## Timeline ({len(replay.get('events', []))} events)\n"
+            for event in replay.get("events", [])[:20]:
+                brief += f"- [{event.get('timestamp', '')}] {event.get('narrative', '')}\n"
+            return {"format": "markdown", "content": brief}
+
+        new_status = status_map.get(action)
+        updates = []
+        params = []
+
+        if new_status and new_status != current["status"]:
+            updates.append("status = %s")
+            params.append(new_status)
+
+        if action == "assign" and assignee:
+            updates.append("assigned_to = %s")
+            params.append(assignee)
+        elif action == "acknowledge":
+            updates.append("assigned_to = %s")
+            params.append(actor)
+
+        if updates:
+            params.append(case_id_str)
+            cursor.execute(
+                f"UPDATE investigation_case SET {', '.join(updates)}, updated_at = NOW() WHERE id = %s RETURNING id, title, mmsi, status, assigned_to, rank_score, updated_at",
+                params,
+            )
+
+        cursor.execute(
+            "INSERT INTO audit_log (action, entity_type, entity_id, actor, details) VALUES (%s, 'case', %s, %s, %s::jsonb)",
+            [
+                f"case_{action}",
+                case_id_str,
+                actor,
+                json.dumps(normalize_value({"action": action, "reason": reason, "assignee": assignee})),
+            ],
+        )
+        cursor.connection.commit()
+
+        cursor.execute(
+            "SELECT id, title, mmsi, status, assigned_to, rank_score, updated_at FROM investigation_case WHERE id = %s",
+            [case_id_str],
+        )
+        updated = cursor.fetchone()
+
+    return {"action": action, "case": normalize_row(dict(updated)), "audit_logged": True}
