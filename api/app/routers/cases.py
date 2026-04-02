@@ -13,6 +13,15 @@ router = APIRouter(prefix="/cases", tags=["cases"])
 ALLOWED_CASE_STATUSES = {"new", "in_review", "escalated", "resolved", "dismissed"}
 
 
+def _sanitize_md(text: str) -> str:
+    """Strip markdown metacharacters from user/DB content."""
+    if not text:
+        return ""
+    for ch in ['#', '*', '_', '`', '[', ']', '(', ')', '>', '|', '~']:
+        text = text.replace(ch, '')
+    return text.strip()
+
+
 @router.get("/")
 async def list_cases(
     limit: int = Query(default=50, ge=1, le=500),
@@ -383,7 +392,10 @@ async def get_case_replay(case_id: UUID):
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Case not found")
 
-    return build_replay(case_id_str)
+    try:
+        return build_replay(case_id_str)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Replay service unavailable") from exc
 
 
 @router.get("/{case_id}/score")
@@ -398,7 +410,10 @@ async def get_case_score(case_id: UUID):
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Case not found")
 
-    return compute_score_breakdown(case_id_str)
+    try:
+        return compute_score_breakdown(case_id_str)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Scoring service unavailable") from exc
 
 
 @router.post("/{case_id}/actions")
@@ -415,6 +430,8 @@ async def perform_case_action(
     valid_actions = {"acknowledge", "assign", "dismiss", "escalate", "mark_under_review", "export_brief"}
     if action not in valid_actions:
         raise HTTPException(status_code=400, detail=f"action must be one of {sorted(valid_actions)}")
+    if (reason is not None and len(str(reason)) > 500) or (assignee is not None and len(str(assignee)) > 500):
+        raise HTTPException(status_code=400, detail="reason/assignee must be under 500 characters")
 
     case_id_str = str(case_id)
     status_map = {
@@ -438,24 +455,27 @@ async def perform_case_action(
             from app.services.replay import build_replay
             from app.services.scoring import compute_score_breakdown
 
-            score = compute_score_breakdown(case_id_str)
-            replay = build_replay(case_id_str)
-            brief = f"# Case Brief: {current['title']}\n\n"
-            brief += f"**MMSI:** {current['mmsi']}\n"
-            brief += f"**Status:** {current['status']}\n"
+            try:
+                score = compute_score_breakdown(case_id_str)
+                replay = build_replay(case_id_str)
+            except Exception as exc:
+                raise HTTPException(status_code=503, detail="Brief generation failed") from exc
+            brief = f"# Case Brief: {_sanitize_md(current['title'])}\n\n"
+            brief += f"**MMSI:** {_sanitize_md(current['mmsi'])}\n"
+            brief += f"**Status:** {_sanitize_md(current['status'])}\n"
             brief += f"**Rank Score:** {score.get('rank_score', 'N/A')}\n\n"
             brief += "## Why Now\n"
             for reason_item in score.get("why_now", []):
-                brief += f"- {reason_item}\n"
+                brief += f"- {_sanitize_md(reason_item)}\n"
             brief += "\n## Top Reasons\n"
             for reason_item in score.get("top_reasons", []):
-                brief += f"- {reason_item}\n"
-            brief += f"\n## Confidence\n{score.get('confidence_explainer', 'N/A')}\n"
+                brief += f"- {_sanitize_md(reason_item)}\n"
+            brief += f"\n## Confidence\n{_sanitize_md(score.get('confidence_explainer', 'N/A'))}\n"
             if score.get("benign_context"):
-                brief += f"\n## Benign Context\n{score['benign_context']}\n"
+                brief += f"\n## Benign Context\n{_sanitize_md(score['benign_context'])}\n"
             brief += f"\n## Timeline ({len(replay.get('events', []))} events)\n"
             for event in replay.get("events", [])[:20]:
-                brief += f"- [{event.get('timestamp', '')}] {event.get('narrative', '')}\n"
+                brief += f"- [{event.get('timestamp', '')}] {_sanitize_md(event.get('narrative', ''))}\n"
             return {"format": "markdown", "content": brief}
 
         new_status = status_map.get(action)
