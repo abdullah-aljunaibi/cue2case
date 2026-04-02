@@ -1,4 +1,4 @@
-// Client-rendered Cue2Case map page using raw Leaflet for case markers and vessel tracks.
+// Client-rendered Cue2Case map page for browsing mapped cases and vessel tracks.
 'use client';
 
 import 'leaflet/dist/leaflet.css';
@@ -219,9 +219,7 @@ export default function MapPage() {
         }
 
         setCases([]);
-        setCasesError(
-          error instanceof Error ? error.message : 'Unknown error while loading map cases.',
-        );
+        setCasesError(error instanceof Error ? error.message : 'Unknown error while loading map cases.');
       }
     }
 
@@ -363,7 +361,11 @@ export default function MapPage() {
         });
 
         if (!response.ok) {
-          throw new Error(`Track request failed with status ${response.status}`);
+          if (response.status === 404) {
+            throw new Error('Track history is not available for this vessel yet.');
+          }
+
+          throw new Error('Unable to load the latest vessel track right now.');
         }
 
         const payload = (await response.json()) as TrackItem[];
@@ -376,7 +378,7 @@ export default function MapPage() {
 
         if (points.length === 0) {
           setTrackLoading(false);
-          setTrackError('Track data is not available for this vessel yet.');
+          setTrackError('Track history is not available for this vessel yet.');
           return;
         }
 
@@ -405,7 +407,7 @@ export default function MapPage() {
 
         setTrackLoading(false);
         setTrackError(
-          error instanceof Error ? error.message : 'Unknown error while loading track data.',
+          error instanceof Error ? error.message : 'Unable to load the latest vessel track right now.',
         );
       }
     }
@@ -420,6 +422,7 @@ export default function MapPage() {
   const totalMarkers = cases.length;
   const markersWithCoordinates = cases.filter((item) => item.hasCoordinates);
   const missingCoordinatesCount = totalMarkers - markersWithCoordinates.length;
+  const selectedCaseHref = selectedCase?.caseId !== null && selectedCase?.caseId !== undefined ? `/cases/${selectedCase.caseId}` : null;
 
   return (
     <main
@@ -458,7 +461,7 @@ export default function MapPage() {
           </Link>
           <h1 style={{ margin: '0 0 0.4rem', fontSize: '2rem' }}>Cue2Case Map View</h1>
           <p style={{ margin: 0, color: '#475569', fontSize: '1rem' }}>
-            Real-time spatial case view with raw Leaflet, OSM tiles, and vessel tracks.
+            Review mapped cases, confirm vessel movement, and jump straight into the active case.
           </p>
         </header>
 
@@ -475,7 +478,9 @@ export default function MapPage() {
             }}
           >
             <div style={{ fontWeight: 700, marginBottom: '0.35rem' }}>Unable to load map cases</div>
-            <div style={{ fontSize: '0.95rem' }}>{casesError}. Check API availability and configuration.</div>
+            <div style={{ fontSize: '0.95rem' }}>
+              The map feed is unavailable right now. Queue review can continue once the data service responds.
+            </div>
           </section>
         ) : null}
 
@@ -503,7 +508,7 @@ export default function MapPage() {
             <div>
               <h2 style={{ margin: '0 0 0.35rem', fontSize: '1.2rem' }}>Cases</h2>
               <p style={{ margin: 0, color: '#64748b', fontSize: '0.92rem' }}>
-                Select a case to highlight it and load the latest vessel track.
+                Select a case to center the map, review vessel movement, and continue into case handling.
               </p>
             </div>
 
@@ -545,7 +550,7 @@ export default function MapPage() {
                 lineHeight: 1.5,
               }}
             >
-              Overlays note: geofence overlays are not yet exposed by the API, so this map only shows live case points and tracks.
+              Use the map to verify location context and vessel movement before opening the full case record.
             </div>
 
             <div style={{ display: 'grid', gap: '0.75rem', overflowY: 'auto', paddingRight: '0.25rem' }}>
@@ -560,7 +565,7 @@ export default function MapPage() {
                     backgroundColor: '#f8fafc',
                   }}
                 >
-                  No map cases available right now.
+                  No mapped cases are ready for review yet.
                 </div>
               ) : (
                 cases.map((item, index) => {
@@ -644,7 +649,7 @@ export default function MapPage() {
                           Coordinates:{' '}
                           {item.hasCoordinates
                             ? `${formatCoordinate(item.lon)}, ${formatCoordinate(item.lat)}`
-                            : 'No coordinates'}
+                            : 'Awaiting position fix'}
                         </div>
                       </div>
                     </button>
@@ -676,27 +681,55 @@ export default function MapPage() {
                 <div>
                   <h2 style={{ margin: '0 0 0.25rem', fontSize: '1.2rem' }}>Operational map</h2>
                   <p style={{ margin: 0, color: '#64748b', fontSize: '0.92rem' }}>
-                    OSM basemap with case circle markers and the selected vessel track.
+                    Monitor mapped case positions and the latest available vessel route for the selected record.
                   </p>
                 </div>
                 <div style={{ color: '#475569', fontSize: '0.88rem', textAlign: 'right' }}>
-                  <div>Selected: {selectedCase ? getCaseLabel(selectedCase) : 'None'}</div>
-                  <div>{trackLoading ? 'Loading track…' : trackError ? 'Track unavailable' : 'Track ready when available'}</div>
+                  <div>Selected: {selectedCase ? getCaseLabel(selectedCase) : 'No case selected'}</div>
+                  <div>
+                    {trackLoading
+                      ? 'Loading vessel track…'
+                      : trackError
+                        ? 'Track unavailable'
+                        : selectedCase
+                          ? 'Track shown when available'
+                          : 'Select a case to review movement'}
+                  </div>
                 </div>
               </div>
 
-              <div
-                ref={mapElementRef}
-                style={{
-                  height: '68vh',
-                  minHeight: '520px',
-                  width: '100%',
-                  borderRadius: '14px',
-                  overflow: 'hidden',
-                  border: '1px solid #dbe3f0',
-                  backgroundColor: '#dbeafe',
-                }}
-              />
+              <div style={{ position: 'relative' }}>
+                <div
+                  ref={mapElementRef}
+                  style={{
+                    height: '68vh',
+                    minHeight: '520px',
+                    width: '100%',
+                    borderRadius: '14px',
+                    overflow: 'hidden',
+                    border: '1px solid #dbe3f0',
+                    backgroundColor: '#dbeafe',
+                  }}
+                />
+                {trackLoading ? (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '1rem',
+                      right: '1rem',
+                      padding: '0.45rem 0.7rem',
+                      borderRadius: '999px',
+                      backgroundColor: 'rgba(15, 23, 42, 0.8)',
+                      color: '#f8fafc',
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      boxShadow: '0 8px 20px rgba(15, 23, 42, 0.18)',
+                    }}
+                  >
+                    Loading track…
+                  </div>
+                ) : null}
+              </div>
             </section>
 
             <section
@@ -708,7 +741,37 @@ export default function MapPage() {
                 boxShadow: '0 8px 24px rgba(15, 23, 42, 0.04)',
               }}
             >
-              <h2 style={{ margin: '0 0 0.75rem', fontSize: '1.05rem' }}>Selection detail</h2>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: '0.75rem',
+                  flexWrap: 'wrap',
+                  marginBottom: '0.75rem',
+                }}
+              >
+                <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Selection detail</h2>
+                {selectedCaseHref ? (
+                  <Link
+                    href={selectedCaseHref}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: '999px',
+                      padding: '0.6rem 0.95rem',
+                      backgroundColor: '#1d4ed8',
+                      color: '#ffffff',
+                      fontSize: '0.9rem',
+                      fontWeight: 700,
+                      textDecoration: 'none',
+                    }}
+                  >
+                    Open case →
+                  </Link>
+                ) : null}
+              </div>
 
               {selectedCase ? (
                 <div style={{ display: 'grid', gap: '0.8rem' }}>
@@ -729,7 +792,7 @@ export default function MapPage() {
                         label: 'Coordinates',
                         value: selectedCase.hasCoordinates
                           ? `${formatCoordinate(selectedCase.lon)}, ${formatCoordinate(selectedCase.lat)}`
-                          : 'No coordinates',
+                          : 'Awaiting position fix',
                       },
                     ].map((item) => (
                       <div
@@ -789,7 +852,7 @@ export default function MapPage() {
                         fontSize: '0.92rem',
                       }}
                     >
-                      Track note: {trackError}. Markers remain available.
+                      Vessel movement could not be drawn for this selection. {trackError}
                     </div>
                   ) : null}
                 </div>
@@ -803,7 +866,7 @@ export default function MapPage() {
                     backgroundColor: '#f8fafc',
                   }}
                 >
-                  Select a case from the panel or click a marker on the map.
+                  Choose a case from the list or click a marker to review details and continue into the case record.
                 </div>
               )}
             </section>
