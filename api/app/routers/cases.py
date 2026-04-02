@@ -476,7 +476,7 @@ async def perform_case_action(
             brief += f"\n## Timeline ({len(replay.get('events', []))} events)\n"
             for event in replay.get("events", [])[:20]:
                 brief += f"- [{event.get('timestamp', '')}] {_sanitize_md(event.get('narrative', ''))}\n"
-            return {"format": "markdown", "content": brief}
+            return {"action": "export_brief", "case": current, "audit_logged": False, "brief": {"format": "markdown", "content": brief}}
 
         new_status = status_map.get(action)
         updates = []

@@ -16,7 +16,7 @@ app = FastAPI(title="Cue2Case API", version="0.3.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allow all origins for demo
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -31,12 +31,18 @@ AVAILABLE_ROUTES = [
     "/cases/{case_id}",
     "/cases/{case_id}/notes",
     "/cases/{case_id}/audit",
+    "/cases/{case_id}/score",
+    "/cases/{case_id}/replay",
+    "/cases/{case_id}/actions",
     "/alerts",
     "/vessels/{mmsi}",
     "/tracks/{mmsi}",
     "/map/cases",
     "/external-cues",
     "/external-cues/import-sample",
+    "/port-context/profile",
+    "/port-context/zones",
+    "/port-context/criticality",
 ]
 
 
@@ -313,17 +319,21 @@ async def list_external_cues(
 async def create_external_cue(payload: Dict[str, Any] = Body(...)):
     cue = validate_external_cue_payload(payload)
     geom_sql = "NULL"
-    params: List[Any] = [
+    params_before_geom: List[Any] = [
         cue["source"],
         cue["cue_type"],
         cue["observed_at"],
+    ]
+    params_after_geom: List[Any] = [
         json.dumps(cue["data"]),
         cue["case_id"],
     ]
 
     if cue["lon"] is not None and cue["lat"] is not None:
         geom_sql = "ST_SetSRID(ST_MakePoint(%s, %s), 4326)"
-        params.extend([cue["lon"], cue["lat"]])
+        params = params_before_geom + [cue["lon"], cue["lat"]] + params_after_geom
+    else:
+        params = params_before_geom + params_after_geom
 
     query = f"""
         INSERT INTO external_cue (
