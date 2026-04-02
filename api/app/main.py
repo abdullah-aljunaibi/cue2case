@@ -9,8 +9,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.db import get_db_cursor, normalize_row, normalize_value
 from app.routers.cases import router as cases_router
+from app.routers.port_context import router as port_context_router
 
-app = FastAPI(title="Cue2Case API", version="0.1.0")
+app = FastAPI(title="Cue2Case API", version="0.3.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -21,6 +22,7 @@ app.add_middleware(
 )
 
 app.include_router(cases_router)
+app.include_router(port_context_router)
 
 AVAILABLE_ROUTES = [
     "/",

@@ -8,3 +8,4 @@ node_modules/
 web/.gitignore
 web/next-env.d.ts
 web/.vercel
+web/tsconfig.tsbuildinfo
