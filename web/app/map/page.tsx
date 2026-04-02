@@ -1,8 +1,6 @@
 // Client-rendered Cue2Case map page for browsing mapped cases and vessel tracks.
 'use client';
 
-import 'leaflet/dist/leaflet.css';
-
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
