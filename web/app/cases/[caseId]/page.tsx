@@ -901,13 +901,13 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
 
             <SectionCard title="Map section" subtitle={primaryCoords ? `Lat ${primaryCoords[0].toFixed(4)} · Lon ${primaryCoords[1].toFixed(4)}` : 'No primary geometry available'}>
               {caseData?.primary_geom || primaryCoords ? (
-                {mapError ? (
-                  <div style={{ height: '360px', width: '100%', borderRadius: '12px', border: `1px solid ${COLORS.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLORS.muted, fontSize: '13px', backgroundColor: COLORS.surface }}>
+                mapError ? (
+                  <div style={{ height: '360px', width: '100%', borderRadius: '12px', border: `1px solid ${COLORS.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLORS.muted, fontSize: '13px', backgroundColor: COLORS.card }}>
                     Map unavailable — Leaflet failed to load
                   </div>
                 ) : (
                   <div ref={mapRef} style={{ height: '360px', width: '100%', borderRadius: '12px', overflow: 'hidden', border: `1px solid ${COLORS.border}` }} />
-                )}
+                )
               ) : (
                 <div
                   style={{

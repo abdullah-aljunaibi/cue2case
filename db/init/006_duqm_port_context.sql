@@ -70,5 +70,13 @@ CREATE INDEX IF NOT EXISTS idx_operational_zone_profile ON operational_zone(prof
 CREATE INDEX IF NOT EXISTS idx_approach_corridor_profile ON approach_corridor(profile_id);
 CREATE INDEX IF NOT EXISTS idx_critical_area_profile ON critical_area(profile_id);
 
-ALTER TABLE investigation_case
-ADD COLUMN zone_context JSONB DEFAULT '{}';
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'investigation_case' AND column_name = 'zone_context'
+  ) THEN
+    ALTER TABLE investigation_case ADD COLUMN zone_context JSONB DEFAULT '{}';
+  END IF;
+END
+$$;
