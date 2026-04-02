@@ -1,6 +1,7 @@
 // Server-rendered Cue2Case case detail page with analyst workflow actions, notes, audit, and evidence timeline.
 import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 
 
 type EvidenceItem = {
@@ -245,10 +246,16 @@ function auditDetail(entry: AuditItem) {
 
 export default async function CaseDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ caseId: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { caseId } = await params;
+  const resolvedSearchParams = (await searchParams) || {};
+  const feedback = Array.isArray(resolvedSearchParams.feedback)
+    ? resolvedSearchParams.feedback[0]
+    : resolvedSearchParams.feedback;
   const [caseResult, notesResult, auditResult] = await Promise.all([
     getCase(caseId),
     getNotes(caseId),
@@ -276,6 +283,7 @@ export default async function CaseDetailPage({
 
     await patchCase(caseId, payload);
     revalidatePath(`/cases/${caseId}`);
+    redirect(`/cases/${caseId}?feedback=workflow-updated`);
   }
 
   async function createNote(formData: FormData) {
@@ -289,6 +297,7 @@ export default async function CaseDetailPage({
 
     await postCaseNote(caseId, content);
     revalidatePath(`/cases/${caseId}`);
+    redirect(`/cases/${caseId}?feedback=note-added`);
   }
 
   const pageStyle = {
@@ -313,6 +322,19 @@ export default async function CaseDetailPage({
     color: '#0f172a',
   } as const;
 
+  const feedbackConfig =
+    feedback === 'workflow-updated'
+      ? {
+          title: 'Workflow updated',
+          description: 'The case status or assignee was updated successfully.',
+        }
+      : feedback === 'note-added'
+        ? {
+            title: 'Note added',
+            description: 'Your analyst note was saved to the case timeline.',
+          }
+        : null;
+
   return (
     <main style={pageStyle}>
       <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
@@ -329,6 +351,22 @@ export default async function CaseDetailPage({
             ← Back to queue
           </Link>
         </div>
+
+        {feedbackConfig ? (
+          <section
+            style={{
+              ...cardStyle,
+              marginBottom: '1rem',
+              padding: '0.95rem 1.1rem',
+              backgroundColor: '#ecfdf3',
+              border: '1px solid #86efac',
+              color: '#166534',
+            }}
+          >
+            <div style={{ fontWeight: 700, marginBottom: '0.2rem' }}>{feedbackConfig.title}</div>
+            <div style={{ fontSize: '0.92rem' }}>{feedbackConfig.description}</div>
+          </section>
+        ) : null}
 
         {caseResult.kind === 'not-found' ? (
           <section
@@ -660,40 +698,63 @@ export default async function CaseDetailPage({
                         <div style={{ color: '#64748b', fontSize: '0.9rem', marginTop: '0.25rem' }}>
                           Quick analyst state changes for this case.
                         </div>
+                        <div style={{ color: '#94a3b8', fontSize: '0.82rem', marginTop: '0.35rem' }}>
+                          Changes save immediately and refresh with a confirmation message.
+                        </div>
                       </div>
                       <div style={{ display: 'grid', gap: '0.65rem' }}>
                         {[
                           { label: 'Start review', status: 'in_review' },
-                          { label: 'Assign to Abdullah', assigned_to: 'Abdullah' },
+                          { label: 'Assign to me', assigned_to: 'Abdullah' },
                           { label: 'Escalate', status: 'escalated' },
                           { label: 'Resolve', status: 'resolved' },
                           { label: 'Dismiss', status: 'dismissed' },
-                        ].map((action) => (
-                          <form key={action.label} action={updateWorkflow}>
-                            {'status' in action ? (
-                              <input type="hidden" name="status" value={action.status} />
-                            ) : null}
-                            {'assigned_to' in action ? (
-                              <input type="hidden" name="assigned_to" value={action.assigned_to} />
-                            ) : null}
-                            <button
-                              type="submit"
-                              style={{
-                                width: '100%',
-                                textAlign: 'left',
-                                border: '1px solid #cbd5e1',
-                                borderRadius: '12px',
-                                backgroundColor: '#ffffff',
-                                color: '#0f172a',
-                                padding: '0.85rem 0.95rem',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                              }}
-                            >
-                              {action.label}
-                            </button>
-                          </form>
-                        ))}
+                        ].map((action) => {
+                          const isActive =
+                            ('status' in action && caseData.status === action.status) ||
+                            ('assigned_to' in action && caseData.assigned_to === action.assigned_to);
+
+                          return (
+                            <form key={action.label} action={updateWorkflow}>
+                              {'status' in action ? (
+                                <input type="hidden" name="status" value={action.status} />
+                              ) : null}
+                              {'assigned_to' in action ? (
+                                <input type="hidden" name="assigned_to" value={action.assigned_to} />
+                              ) : null}
+                              <button
+                                type="submit"
+                                aria-pressed={isActive}
+                                style={{
+                                  width: '100%',
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  gap: '0.75rem',
+                                  textAlign: 'left',
+                                  border: isActive ? '1px solid #93c5fd' : '1px solid #cbd5e1',
+                                  borderRadius: '12px',
+                                  backgroundColor: isActive ? '#eff6ff' : '#ffffff',
+                                  color: '#0f172a',
+                                  padding: '0.85rem 0.95rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                <span>{action.label}</span>
+                                <span
+                                  style={{
+                                    fontSize: '0.74rem',
+                                    fontWeight: 700,
+                                    color: isActive ? '#1d4ed8' : '#64748b',
+                                  }}
+                                >
+                                  {isActive ? 'Current' : 'Save'}
+                                </span>
+                              </button>
+                            </form>
+                          );
+                        })}
                       </div>
                     </section>
 

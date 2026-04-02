@@ -1,4 +1,4 @@
-// Server-rendered external cues page that lists ingested cues from the API.
+// Server-rendered external cues page that presents recent analyst-facing cue activity.
 import Link from 'next/link';
 
 type CueItem = {
@@ -72,6 +72,10 @@ function formatJson(value: unknown) {
   }
 }
 
+function hasRawPayload(value: unknown) {
+  return value !== undefined && value !== null;
+}
+
 async function getExternalCues() {
   const endpoint = `${apiUrl}/external-cues?limit=50&offset=0`;
   const response = await fetch(endpoint, { cache: 'no-store' });
@@ -103,6 +107,10 @@ export default async function ExternalCuesPage() {
       !Number.isNaN(item.lon) &&
       typeof item.lat === 'number' &&
       !Number.isNaN(item.lat)
+  ).length;
+
+  const linkedCases = cues.filter(
+    (item) => item.case_id !== undefined && item.case_id !== null
   ).length;
 
   const distinctTypes = new Set(
@@ -147,8 +155,8 @@ export default async function ExternalCuesPage() {
             ← Back to queue
           </Link>
           <h1 style={{ margin: '0 0 0.4rem', fontSize: '2rem' }}>External Cues</h1>
-          <p style={{ margin: 0, color: '#475569', fontSize: '1rem' }}>
-            Imagery, tips, RF detections, and other analyst inputs
+          <p style={{ margin: 0, color: '#475569', fontSize: '1rem', maxWidth: '48rem' }}>
+            Recent external reporting and detections available for case review.
           </p>
         </header>
 
@@ -183,6 +191,7 @@ export default async function ExternalCuesPage() {
         >
           {[
             { label: 'Total cues shown', value: String(cues.length) },
+            { label: 'Linked to a case', value: String(linkedCases) },
             { label: 'With coordinates', value: String(withCoordinates) },
             { label: 'Distinct cue types', value: String(distinctTypes) },
           ].map((metric) => (
@@ -221,6 +230,10 @@ export default async function ExternalCuesPage() {
           <section style={{ display: 'grid', gap: '1rem' }}>
             {cues.map((item, index) => {
               const key = item.id ?? `${item.cue_type ?? 'cue'}-${index}`;
+              const cueType = item.cue_type && item.cue_type.trim().length > 0 ? item.cue_type : 'Unknown type';
+              const source = item.source && item.source.trim().length > 0 ? item.source : 'Unspecified source';
+              const linkedCase =
+                item.case_id !== undefined && item.case_id !== null ? String(item.case_id) : null;
 
               return (
                 <article
@@ -240,34 +253,54 @@ export default async function ExternalCuesPage() {
                       justifyContent: 'space-between',
                       flexWrap: 'wrap',
                       gap: '0.75rem',
-                      marginBottom: '0.85rem',
+                      marginBottom: '1rem',
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                      <span
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            borderRadius: '999px',
+                            padding: '0.3rem 0.65rem',
+                            fontSize: '0.8rem',
+                            fontWeight: 700,
+                            backgroundColor: '#eff6ff',
+                            border: '1px solid #bfdbfe',
+                            color: '#1d4ed8',
+                          }}
+                        >
+                          {cueType}
+                        </span>
+                        <span style={{ color: '#475569', fontSize: '0.95rem' }}>{source}</span>
+                      </div>
+                      <div style={{ marginTop: '0.55rem', color: '#0f172a', fontSize: '1rem', fontWeight: 700 }}>
+                        Observed {formatUtcDate(item.observed_at)}
+                      </div>
+                    </div>
+
+                    {linkedCase ? (
+                      <Link
+                        href={`/cases/${linkedCase}`}
                         style={{
                           display: 'inline-flex',
                           alignItems: 'center',
-                          borderRadius: '999px',
-                          padding: '0.3rem 0.65rem',
-                          fontSize: '0.8rem',
-                          fontWeight: 700,
-                          backgroundColor: '#eff6ff',
-                          border: '1px solid #bfdbfe',
+                          gap: '0.35rem',
                           color: '#1d4ed8',
+                          fontSize: '0.95rem',
+                          fontWeight: 700,
+                          textDecoration: 'none',
+                          whiteSpace: 'nowrap',
                         }}
                       >
-                        {item.cue_type && item.cue_type.trim().length > 0
-                          ? item.cue_type
-                          : 'Unknown type'}
+                        Open case {linkedCase} →
+                      </Link>
+                    ) : (
+                      <span style={{ color: '#64748b', fontSize: '0.9rem', fontWeight: 600 }}>
+                        Not linked to a case
                       </span>
-                      <span style={{ color: '#475569', fontSize: '0.95rem' }}>
-                        Source: {item.source && item.source.trim().length > 0 ? item.source : '—'}
-                      </span>
-                    </div>
-                    <div style={{ color: '#64748b', fontSize: '0.9rem' }}>
-                      Observed: {formatUtcDate(item.observed_at)}
-                    </div>
+                    )}
                   </div>
 
                   <div
@@ -275,58 +308,64 @@ export default async function ExternalCuesPage() {
                       display: 'grid',
                       gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
                       gap: '0.75rem',
-                      marginBottom: '0.9rem',
+                      marginBottom: hasRawPayload(item.data) ? '0.9rem' : 0,
                     }}
                   >
                     {[
                       { label: 'Longitude', value: formatCoord(item.lon) },
                       { label: 'Latitude', value: formatCoord(item.lat) },
-                      {
-                        label: 'Linked case',
-                        value:
-                          item.case_id !== undefined && item.case_id !== null
-                            ? String(item.case_id)
-                            : 'Unlinked',
-                      },
-                      { label: 'Created', value: formatUtcDate(item.created_at) },
+                      { label: 'Case status', value: linkedCase ? `Linked to case ${linkedCase}` : 'Awaiting triage' },
+                      { label: 'Recorded', value: formatUtcDate(item.created_at) },
                     ].map((field) => (
                       <div
                         key={field.label}
                         style={{
-                          padding: '0.75rem',
+                          padding: '0.85rem',
                           backgroundColor: '#f8fafc',
                           border: '1px solid #e2e8f0',
                           borderRadius: '12px',
                         }}
                       >
-                        <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '0.25rem' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '0.3rem' }}>
                           {field.label}
                         </div>
-                        <div style={{ fontSize: '0.95rem', fontWeight: 600 }}>{field.value}</div>
+                        <div style={{ fontSize: '0.98rem', fontWeight: 700, color: '#0f172a' }}>
+                          {field.value}
+                        </div>
                       </div>
                     ))}
                   </div>
 
-                  <div>
-                    <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '0.35rem' }}>
-                      Data
+                  {hasRawPayload(item.data) ? (
+                    <div>
+                      <div
+                        style={{
+                          fontSize: '0.8rem',
+                          color: '#94a3b8',
+                          marginBottom: '0.35rem',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em',
+                        }}
+                      >
+                        Source payload
+                      </div>
+                      <pre
+                        style={{
+                          margin: 0,
+                          padding: '0.85rem',
+                          borderRadius: '12px',
+                          border: '1px solid #e2e8f0',
+                          backgroundColor: '#f8fafc',
+                          color: '#475569',
+                          fontSize: '0.78rem',
+                          lineHeight: 1.45,
+                          overflowX: 'auto',
+                        }}
+                      >
+                        {formatJson(item.data)}
+                      </pre>
                     </div>
-                    <pre
-                      style={{
-                        margin: 0,
-                        padding: '0.9rem',
-                        borderRadius: '12px',
-                        border: '1px solid #e2e8f0',
-                        backgroundColor: '#0b1220',
-                        color: '#dbeafe',
-                        fontSize: '0.83rem',
-                        lineHeight: 1.45,
-                        overflowX: 'auto',
-                      }}
-                    >
-                      {formatJson(item.data)}
-                    </pre>
-                  </div>
+                  ) : null}
                 </article>
               );
             })}

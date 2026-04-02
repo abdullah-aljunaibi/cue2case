@@ -186,7 +186,7 @@ async def get_vessel(mmsi: int):
 
 
 @app.get("/tracks/{mmsi}")
-async def get_tracks(mmsi: int):
+async def get_tracks(mmsi: str):
     query = """
         SELECT
             id,
@@ -198,7 +198,7 @@ async def get_tracks(mmsi: int):
             avg_sog,
             max_sog
         FROM track_segment
-        WHERE mmsi = %s
+        WHERE mmsi = %s::text
         ORDER BY start_time DESC, id DESC
         LIMIT 20
     """
