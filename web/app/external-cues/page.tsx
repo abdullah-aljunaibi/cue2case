@@ -123,8 +123,8 @@ export default async function ExternalCuesPage() {
     <main
       style={{
         fontFamily: 'Arial, sans-serif',
-        backgroundColor: '#f3f6fb',
-        color: '#0f172a',
+        backgroundColor: '#0a0e17',
+        color: '#e0e6f0',
         minHeight: '100vh',
         padding: '2rem',
       }}
@@ -134,9 +134,9 @@ export default async function ExternalCuesPage() {
           style={{
             marginBottom: '1.5rem',
             padding: '1.5rem',
-            backgroundColor: '#ffffff',
-            border: '1px solid #dbe3f0',
-            borderRadius: '16px',
+            backgroundColor: '#0d1220',
+            border: '1px solid #1a2338',
+            borderRadius: '8px',
             boxShadow: '0 8px 24px rgba(15, 23, 42, 0.06)',
           }}
         >
@@ -146,7 +146,7 @@ export default async function ExternalCuesPage() {
               display: 'inline-flex',
               alignItems: 'center',
               marginBottom: '0.85rem',
-              color: '#1d4ed8',
+              color: '#60a5fa',
               fontSize: '0.95rem',
               fontWeight: 700,
               textDecoration: 'none',
@@ -155,7 +155,7 @@ export default async function ExternalCuesPage() {
             ← Back to queue
           </Link>
           <h1 style={{ margin: '0 0 0.4rem', fontSize: '2rem' }}>External Cues</h1>
-          <p style={{ margin: 0, color: '#475569', fontSize: '1rem', maxWidth: '48rem' }}>
+          <p style={{ margin: 0, color: '#64748b', fontSize: '1rem', maxWidth: '48rem' }}>
             Recent external reporting and detections available for case review.
           </p>
         </header>
@@ -165,10 +165,10 @@ export default async function ExternalCuesPage() {
             style={{
               marginBottom: '1.5rem',
               padding: '1rem 1.25rem',
-              backgroundColor: '#fff1f2',
-              border: '1px solid #fecdd3',
-              borderRadius: '14px',
-              color: '#9f1239',
+              backgroundColor: '#7f1d1d',
+              border: '1px solid #991b1b',
+              borderRadius: '6px',
+              color: '#fca5a5',
               boxShadow: '0 4px 12px rgba(159, 18, 57, 0.08)',
             }}
           >
@@ -198,9 +198,9 @@ export default async function ExternalCuesPage() {
             <div
               key={metric.label}
               style={{
-                backgroundColor: '#ffffff',
-                border: '1px solid #dbe3f0',
-                borderRadius: '14px',
+                backgroundColor: '#0d1220',
+                border: '1px solid #1a2338',
+                borderRadius: '6px',
                 padding: '1rem 1.25rem',
                 boxShadow: '0 8px 24px rgba(15, 23, 42, 0.04)',
               }}
@@ -216,12 +216,12 @@ export default async function ExternalCuesPage() {
         {cues.length === 0 ? (
           <section
             style={{
-              backgroundColor: '#ffffff',
-              border: '1px dashed #cbd5e1',
-              borderRadius: '16px',
+              backgroundColor: '#0d1220',
+              border: '1px dashed #1a2338',
+              borderRadius: '8px',
               padding: '2rem',
               textAlign: 'center',
-              color: '#475569',
+              color: '#64748b',
             }}
           >
             No external cues available right now.
@@ -239,9 +239,9 @@ export default async function ExternalCuesPage() {
                 <article
                   key={key}
                   style={{
-                    backgroundColor: '#ffffff',
-                    border: '1px solid #dbe3f0',
-                    borderRadius: '16px',
+                    backgroundColor: '#0d1220',
+                    border: '1px solid #1a2338',
+                    borderRadius: '8px',
                     padding: '1.25rem',
                     boxShadow: '0 10px 30px rgba(15, 23, 42, 0.05)',
                   }}
@@ -266,16 +266,16 @@ export default async function ExternalCuesPage() {
                             padding: '0.3rem 0.65rem',
                             fontSize: '0.8rem',
                             fontWeight: 700,
-                            backgroundColor: '#eff6ff',
+                            backgroundColor: '#1e3a5f',
                             border: '1px solid #bfdbfe',
-                            color: '#1d4ed8',
+                            color: '#60a5fa',
                           }}
                         >
                           {cueType}
                         </span>
-                        <span style={{ color: '#475569', fontSize: '0.95rem' }}>{source}</span>
+                        <span style={{ color: '#64748b', fontSize: '0.95rem' }}>{source}</span>
                       </div>
-                      <div style={{ marginTop: '0.55rem', color: '#0f172a', fontSize: '1rem', fontWeight: 700 }}>
+                      <div style={{ marginTop: '0.55rem', color: '#e0e6f0', fontSize: '1rem', fontWeight: 700 }}>
                         Observed {formatUtcDate(item.observed_at)}
                       </div>
                     </div>
@@ -287,7 +287,7 @@ export default async function ExternalCuesPage() {
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: '0.35rem',
-                          color: '#1d4ed8',
+                          color: '#60a5fa',
                           fontSize: '0.95rem',
                           fontWeight: 700,
                           textDecoration: 'none',
@@ -321,15 +321,15 @@ export default async function ExternalCuesPage() {
                         key={field.label}
                         style={{
                           padding: '0.85rem',
-                          backgroundColor: '#f8fafc',
-                          border: '1px solid #e2e8f0',
+                          backgroundColor: '#0f1419',
+                          border: '1px solid #1a2338',
                           borderRadius: '12px',
                         }}
                       >
                         <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '0.3rem' }}>
                           {field.label}
                         </div>
-                        <div style={{ fontSize: '0.98rem', fontWeight: 700, color: '#0f172a' }}>
+                        <div style={{ fontSize: '0.98rem', fontWeight: 700, color: '#e0e6f0' }}>
                           {field.value}
                         </div>
                       </div>
@@ -354,9 +354,9 @@ export default async function ExternalCuesPage() {
                           margin: 0,
                           padding: '0.85rem',
                           borderRadius: '12px',
-                          border: '1px solid #e2e8f0',
-                          backgroundColor: '#f8fafc',
-                          color: '#475569',
+                          border: '1px solid #1a2338',
+                          backgroundColor: '#0f1419',
+                          color: '#64748b',
                           fontSize: '0.78rem',
                           lineHeight: 1.45,
                           overflowX: 'auto',
