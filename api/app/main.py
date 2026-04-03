@@ -2,7 +2,9 @@
 
 import json
 import os
+from datetime import datetime
 from typing import Any, Dict, List, Optional
+from uuid import UUID
 
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -63,6 +65,13 @@ def validate_external_cue_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail="cue_type is required")
     if cue_type not in allowed_cue_types:
         raise HTTPException(status_code=400, detail="cue_type must be one of rf_detection, imagery, tip, other")
+    if observed_at is not None:
+        if not isinstance(observed_at, str):
+            raise HTTPException(status_code=400, detail="observed_at must be a valid ISO 8601 datetime")
+        try:
+            datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="observed_at must be a valid ISO 8601 datetime") from exc
     if (lon is None) != (lat is None):
         raise HTTPException(status_code=400, detail="lon and lat must be provided together")
     if data is None:
@@ -76,6 +85,16 @@ def validate_external_cue_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
             lat = float(lat)
         except (TypeError, ValueError) as exc:
             raise HTTPException(status_code=400, detail="lon and lat must be numbers") from exc
+        if not -180 <= lon <= 180:
+            raise HTTPException(status_code=400, detail="lon must be between -180 and 180")
+        if not -90 <= lat <= 90:
+            raise HTTPException(status_code=400, detail="lat must be between -90 and 90")
+
+    if case_id is not None:
+        try:
+            UUID(str(case_id))
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise HTTPException(status_code=400, detail="case_id must be a valid UUID") from exc
 
     return {
         "source": source,
@@ -315,7 +334,7 @@ async def list_external_cues(
     return [serialize_external_cue_row(row) for row in rows]
 
 
-@app.post("/external-cues")
+@app.post("/external-cues", status_code=201)
 async def create_external_cue(payload: Dict[str, Any] = Body(...)):
     cue = validate_external_cue_payload(payload)
     geom_sql = "NULL"
