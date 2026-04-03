@@ -270,7 +270,7 @@ export default function MapPage() {
 
       leafletRef.current = L;
 
-      const map = L.map(mapElementRef.current, {
+      const map = (L as any).map(mapElementRef.current, {
         center: [18, 54],
         zoom: 3,
         zoomControl: true,
