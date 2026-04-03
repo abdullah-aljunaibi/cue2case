@@ -518,3 +518,13 @@ async def perform_case_action(
         updated = cursor.fetchone()
 
     return {"action": action, "case": normalize_row(dict(updated)), "audit_logged": True}
+
+
+@router.get("/{case_id}/narrative")
+async def get_case_narrative(case_id: UUID):
+    from app.services.narrative import generate_narrative
+
+    result = generate_narrative(str(case_id))
+    if not result:
+        raise HTTPException(status_code=404, detail="Case not found")
+    return result
