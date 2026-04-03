@@ -11,16 +11,16 @@ const API =
     : 'http://localhost:8000';
 
 const COLORS = {
-  bg: '#0a0e17',
-  card: '#0f1419',
-  border: '#1a2338',
-  text: '#e0e6f0',
-  muted: '#94a3b8',
-  blue: '#60a5fa',
+  bg: '#0c0c0c',
+  card: '#1a1a1a',
+  border: '#2a2a2a',
+  text: '#ffffff',
+  muted: '#a0a0a0',
+  blue: '#D94436',
   red: '#ef4444',
   yellow: '#f59e0b',
   green: '#4ade80',
-  purple: '#a78bfa',
+  purple: '#D94436',
 };
 
 type ScoreComponents = Partial<{
@@ -650,7 +650,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                               <span>{label}</span>
                               <span style={{ color: COLORS.muted }}>{typeof raw === 'number' ? raw.toFixed(3) : '—'}</span>
                             </div>
-                            <div style={{ height: '10px', background: '#09111f', borderRadius: '999px', overflow: 'hidden', border: `1px solid ${COLORS.border}` }}>
+                            <div style={{ height: '10px', background: '#0c0c0c', borderRadius: '999px', overflow: 'hidden', border: `1px solid ${COLORS.border}` }}>
                               <div style={{ width: `${percent}%`, height: '100%', background: barColor, opacity: 0.9 }} />
                             </div>
                           </div>
@@ -659,7 +659,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                     </div>
 
                     {score.benign_context ? (
-                      <div style={{ padding: '12px', borderRadius: '10px', background: '#0b1220', border: `1px solid ${COLORS.border}`, color: COLORS.muted }}>
+                      <div style={{ padding: '12px', borderRadius: '10px', background: '#1a1a1a', border: `1px solid ${COLORS.border}`, color: COLORS.muted }}>
                         <div style={{ color: COLORS.green, marginBottom: '6px', fontWeight: 600 }}>Benign context</div>
                         {score.benign_context}
                       </div>
@@ -687,9 +687,9 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                             style={{
                               padding: '10px 12px',
                               borderRadius: '10px',
-                              border: `1px solid rgba(239,68,68,0.35)`,
-                              background: 'rgba(239,68,68,0.08)',
-                              color: '#fecaca',
+                              border: `1px solid rgba(217,68,54,0.35)`,
+                              background: 'rgba(217,68,54,0.08)',
+                              color: '#ffffff',
                             }}
                           >
                             {item}
@@ -715,7 +715,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                                   width: '22px',
                                   height: '22px',
                                   borderRadius: '999px',
-                                  background: 'rgba(255,255,255,0.03)',
+                                  background: '#1a1a1a',
                                   border: `1px solid ${color}`,
                                   color,
                                   display: 'flex',
@@ -743,7 +743,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                                     wordBreak: 'break-word',
                                     padding: '10px',
                                     borderRadius: '8px',
-                                    background: '#0b1220',
+                                    background: '#1a1a1a',
                                     border: `1px solid ${COLORS.border}`,
                                     color: COLORS.muted,
                                     fontSize: '12px',
@@ -782,7 +782,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                             padding: '12px',
                             borderRadius: '10px',
                             border: `1px solid ${COLORS.border}`,
-                            background: '#0b1220',
+                            background: '#1a1a1a',
                             display: 'grid',
                             gap: '8px',
                           }}
@@ -861,9 +861,9 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                         style={{
                           padding: '10px 12px',
                           borderRadius: '10px',
-                          border: `1px solid ${actionState.error ? 'rgba(239,68,68,0.4)' : 'rgba(74,222,128,0.4)'}`,
-                          background: actionState.error ? 'rgba(239,68,68,0.08)' : 'rgba(74,222,128,0.08)',
-                          color: actionState.error ? '#fecaca' : '#bbf7d0',
+                          border: `1px solid ${actionState.error ? 'rgba(217,68,54,0.4)' : 'rgba(74,222,128,0.4)'}`,
+                          background: actionState.error ? 'rgba(217,68,54,0.08)' : 'rgba(74,222,128,0.08)',
+                          color: actionState.error ? '#ffffff' : '#ffffff',
                         }}
                       >
                         {actionState.loading ? 'Working… ' : ''}
@@ -883,7 +883,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                             wordBreak: 'break-word',
                             padding: '12px',
                             borderRadius: '10px',
-                            background: '#0b1220',
+                            background: '#1a1a1a',
                             border: `1px solid ${COLORS.border}`,
                             maxHeight: '320px',
                             overflow: 'auto',
@@ -913,7 +913,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                     <div style={{ display: 'grid', gap: '10px' }}>
                       {notes.length ? (
                         notes.map((note, index) => (
-                          <div key={String(note.id || index)} style={{ padding: '12px', borderRadius: '10px', border: `1px solid ${COLORS.border}`, background: '#0b1220' }}>
+                          <div key={String(note.id || index)} style={{ padding: '12px', borderRadius: '10px', border: `1px solid ${COLORS.border}`, background: '#1a1a1a' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', marginBottom: '6px', flexWrap: 'wrap' }}>
                               <strong>{noteAuthor(note)}</strong>
                               <span style={{ color: COLORS.muted }}>{formatDate(note.created_at || note.updated_at)}</span>
@@ -939,7 +939,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                   <div style={{ display: 'grid', gap: '8px' }}>
                     {audit.length ? (
                       audit.map((item, index) => (
-                        <div key={String(item.id || index)} style={{ padding: '10px 12px', borderRadius: '10px', border: `1px solid ${COLORS.border}`, background: '#0b1220' }}>
+                        <div key={String(item.id || index)} style={{ padding: '10px 12px', borderRadius: '10px', border: `1px solid ${COLORS.border}`, background: '#1a1a1a' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '4px' }}>
                             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                               <Badge label={labelize(auditLabel(item))} color={COLORS.purple} />
@@ -977,7 +977,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                     alignItems: 'center',
                     justifyContent: 'center',
                     color: COLORS.muted,
-                    background: '#0b1220',
+                    background: '#1a1a1a',
                   }}
                 >
                   No map geometry on this case.
@@ -1030,7 +1030,7 @@ function Badge({ label, color }: { label: string; color: string }) {
         borderRadius: '999px',
         border: `1px solid ${color}`,
         color,
-        background: 'rgba(255,255,255,0.02)',
+        background: '#1a1a1a',
         fontSize: '11px',
         textTransform: 'uppercase',
         letterSpacing: '0.08em',
@@ -1045,10 +1045,10 @@ function Badge({ label, color }: { label: string; color: string }) {
 function buttonStyle(kind: 'primary' | 'secondary' | 'danger'): React.CSSProperties {
   const palette =
     kind === 'danger'
-      ? { border: COLORS.red, text: '#fecaca', background: 'rgba(239,68,68,0.12)' }
+      ? { border: COLORS.red, text: '#ffffff', background: 'rgba(217,68,54,0.12)' }
       : kind === 'secondary'
-        ? { border: COLORS.purple, text: '#ddd6fe', background: 'rgba(167,139,250,0.12)' }
-        : { border: COLORS.blue, text: '#dbeafe', background: 'rgba(96,165,250,0.12)' };
+        ? { border: COLORS.purple, text: '#ffffff', background: 'rgba(217,68,54,0.12)' }
+        : { border: COLORS.blue, text: '#ffffff', background: 'rgba(217,68,54,0.12)' };
 
   return {
     padding: '10px 12px',
@@ -1067,7 +1067,7 @@ const inputStyle: React.CSSProperties = {
   padding: '10px 12px',
   borderRadius: '10px',
   border: `1px solid ${COLORS.border}`,
-  background: '#0b1220',
+  background: '#1a1a1a',
   color: COLORS.text,
   fontSize: '13px',
   outline: 'none',
