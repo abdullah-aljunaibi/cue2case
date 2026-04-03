@@ -241,22 +241,31 @@ export default function MapPage() {
 
   useEffect(() => {
     let cancelled = false;
+    let retryInterval: ReturnType<typeof setInterval> | null = null;
 
-    async function ensureMap() {
-      if (typeof window === 'undefined' || !window.L) {
-        setMapError('Map library failed to load');
+    function initMap() {
+      if (typeof window === 'undefined') {
         return;
       }
 
       if (!mapElementRef.current || mapRef.current) {
-        return;
+        return true;
+      }
+
+      if (window.__leafletFailed) {
+        setMapError('Map library failed to load');
+        return true;
+      }
+
+      if (!window.L) {
+        return false;
       }
 
       setMapError(null);
       const L = window.L;
 
       if (cancelled || !mapElementRef.current) {
-        return;
+        return true;
       }
 
       leafletRef.current = L;
@@ -274,12 +283,43 @@ export default function MapPage() {
 
       markersLayerRef.current = L.layerGroup().addTo(map);
       mapRef.current = map;
+
+      return true;
     }
 
-    ensureMap();
+    const initialized = initMap();
+
+    if (initialized === false) {
+      let attempts = 0;
+
+      retryInterval = setInterval(() => {
+        attempts += 1;
+
+        const retryInitialized = initMap();
+
+        if (retryInitialized !== false) {
+          if (retryInterval) {
+            clearInterval(retryInterval);
+            retryInterval = null;
+          }
+          return;
+        }
+
+        if (attempts >= 6) {
+          if (retryInterval) {
+            clearInterval(retryInterval);
+            retryInterval = null;
+          }
+          setMapError('Map library failed to load');
+        }
+      }, 500);
+    }
 
     return () => {
       cancelled = true;
+      if (retryInterval) {
+        clearInterval(retryInterval);
+      }
 
       trackLayerRef.current?.remove();
       trackLayerRef.current = null;
@@ -295,7 +335,7 @@ export default function MapPage() {
     const map = mapRef.current;
     const markersLayer = markersLayerRef.current;
 
-    if (!L || !map || !markersLayer) {
+    if (!L || !map || !markersLayer || !window.L?.polyline) {
       return;
     }
 
@@ -350,7 +390,7 @@ export default function MapPage() {
     const L = leafletRef.current;
     const map = mapRef.current;
 
-    if (!L || !map) {
+    if (!L || !map || !window.L?.polyline) {
       return;
     }
 

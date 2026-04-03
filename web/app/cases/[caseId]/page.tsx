@@ -124,6 +124,7 @@ declare global {
       marker: (latlng: [number, number]) => { addTo: (map: LeafletMap) => { bindPopup?: (text: string) => void } };
       latLngBounds: (points: [number, number][]) => LeafletBounds;
     };
+    __leafletFailed?: boolean;
   }
 }
 
@@ -302,6 +303,12 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
       setReplay(null);
       setNotes([]);
       setAudit([]);
+      setShowAllEvents(false);
+      setDismissReason('');
+      setNoteDraft('');
+      setBriefMarkdown('');
+      setActionState({ loading: false, message: '', error: false });
+      setNoteState({ loading: false, message: '', error: false });
 
       // Core case data — must succeed
       const casePayload = await fetchJson<CasePayload>(`${API}/cases/${encodeURIComponent(caseId)}`);
@@ -315,8 +322,11 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
       ]);
 
       setReplay(replayPayload);
-      setNotes(notesPayload ? (Array.isArray(notesPayload) ? notesPayload : asArray((notesPayload as any).notes)) : []);
-      setAudit(auditPayload ? (Array.isArray(auditPayload) ? auditPayload : asArray((auditPayload as any).audit)) : []);
+      const n = notesPayload ? (Array.isArray(notesPayload) ? notesPayload : (notesPayload as any).notes) : [];
+      const a = auditPayload ? (Array.isArray(auditPayload) ? auditPayload : (auditPayload as any).audit) : [];
+
+      setNotes(Array.isArray(n) ? n : []);
+      setAudit(Array.isArray(a) ? a : []);
     } catch (error) {
       setCaseData(null);
       setLoadError(error instanceof Error ? error.message : 'Failed to load case');
@@ -334,52 +344,96 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
   const [mapError, setMapError] = useState(false);
 
   useEffect(() => {
-    if (!mapRef.current) return;
-    if (!(window as any).L) {
-      setMapError(true);
-      return;
-    }
+    let retryInterval: ReturnType<typeof setInterval> | null = null;
 
-    if (!caseData?.primary_geom && !primaryCoords) {
+    const initMap = () => {
+      if (!mapRef.current) return true;
+
+      if (window.__leafletFailed) {
+        setMapError(true);
+        return true;
+      }
+
+      if (!window.L) {
+        return false;
+      }
+
+      if (!caseData?.primary_geom && !primaryCoords) {
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.remove();
+          mapInstanceRef.current = null;
+        }
+        setMapError(false);
+        return true;
+      }
+
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
       }
-      return;
-    }
 
-    if (mapInstanceRef.current) {
-      mapInstanceRef.current.remove();
-      mapInstanceRef.current = null;
-    }
+      setMapError(false);
 
-    const map = window.L.map(mapRef.current).setView(primaryCoords || [0, 0], primaryCoords ? 7 : 2);
-    mapInstanceRef.current = map;
+      const map = window.L.map(mapRef.current).setView(primaryCoords || [0, 0], primaryCoords ? 7 : 2);
+      mapInstanceRef.current = map;
 
-    window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors',
-    }).addTo(map);
+      window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+      }).addTo(map);
 
-    if (caseData?.primary_geom) {
-      try {
-        const layer = window.L.geoJSON(caseData.primary_geom);
-        layer.addTo(map);
-        const bounds = layer.getBounds?.();
-        if (bounds && bounds.isValid?.()) {
-          map.fitBounds(bounds, { padding: [24, 24] });
-        } else if (primaryCoords) {
-          map.setView(primaryCoords, 8);
+      if (caseData?.primary_geom) {
+        try {
+          const layer = window.L.geoJSON(caseData.primary_geom);
+          layer.addTo(map);
+          const bounds = layer.getBounds?.();
+          if (bounds && bounds.isValid?.()) {
+            map.fitBounds(bounds, { padding: [24, 24] });
+          } else if (primaryCoords) {
+            map.setView(primaryCoords, 8);
+          }
+        } catch {
+          if (primaryCoords) map.setView(primaryCoords, 8);
         }
-      } catch {
-        // Malformed GeoJSON — ignore layer
-        if (primaryCoords) map.setView(primaryCoords, 8);
+      } else if (primaryCoords) {
+        window.L.marker(primaryCoords).addTo(map);
+        map.setView(primaryCoords, 8);
       }
-    } else if (primaryCoords) {
-      window.L.marker(primaryCoords).addTo(map);
-      map.setView(primaryCoords, 8);
+
+      return true;
+    };
+
+    const initialized = initMap();
+
+    if (initialized === false) {
+      let attempts = 0;
+
+      retryInterval = setInterval(() => {
+        attempts += 1;
+
+        const retryInitialized = initMap();
+
+        if (retryInitialized !== false) {
+          if (retryInterval) {
+            clearInterval(retryInterval);
+            retryInterval = null;
+          }
+          return;
+        }
+
+        if (attempts >= 6) {
+          if (retryInterval) {
+            clearInterval(retryInterval);
+            retryInterval = null;
+          }
+          setMapError(true);
+        }
+      }, 500);
     }
 
     return () => {
+      if (retryInterval) {
+        clearInterval(retryInterval);
+      }
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
