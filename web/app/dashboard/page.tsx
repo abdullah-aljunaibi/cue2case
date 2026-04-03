@@ -22,13 +22,13 @@ type StatsResponse = {
 };
 
 const COLORS = {
-  bg: '#0c0c0c',
-  panel: '#1a1a1a',
-  border: '#2a2a2a',
+  bg: '#f5f5f5',
+  panel: '#ffffff',
+  border: '#e0e0e0',
   accent: '#D94436',
-  text: '#ffffff',
-  secondary: '#a0a0a0',
-  tertiary: '#666666',
+  text: '#1a1a1a',
+  secondary: '#666666',
+  tertiary: '#999999',
 };
 
 function labelize(value?: string | null) {

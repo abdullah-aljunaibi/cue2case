@@ -7,13 +7,13 @@ const apiUrl =
   'http://localhost:8000';
 
 const COLORS = {
-  bg: '#0c0c0c',
-  panel: '#1a1a1a',
-  border: '#2a2a2a',
+  bg: '#f5f5f5',
+  panel: '#ffffff',
+  border: '#e0e0e0',
   accent: '#D94436',
-  text: '#ffffff',
-  secondary: '#a0a0a0',
-  tertiary: '#666666',
+  text: '#1a1a1a',
+  secondary: '#666666',
+  tertiary: '#999999',
 };
 
 type VesselRecord = {
@@ -131,7 +131,7 @@ function getAlertTimestamp(alert: AlertItem) {
 function getSeverityColor(severity?: string | number | null) {
   const num = typeof severity === 'number' ? severity : parseFloat(String(severity ?? '0'));
   if (num >= 0.8) return COLORS.accent;
-  if (num >= 0.5) return '#ffffff';
+  if (num >= 0.5) return '#1a1a1a';
   return COLORS.secondary;
 }
 
