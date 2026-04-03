@@ -138,7 +138,7 @@ export default async function ExternalCuesPage() {
             backgroundColor: '#1a1a1a',
             border: '1px solid #2a2a2a',
             borderRadius: '8px',
-            boxShadow: '0 8px 24px rgba(15, 23, 42, 0.06)',
+            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.06)',
           }}
         >
           <Link
@@ -166,10 +166,10 @@ export default async function ExternalCuesPage() {
             style={{
               marginBottom: '1.5rem',
               padding: '1rem 1.25rem',
-              backgroundColor: '#7f1d1d',
-              border: '1px solid #991b1b',
+              backgroundColor: '#1a1a1a',
+              border: '1px solid #D94436',
               borderRadius: '6px',
-              color: '#fca5a5',
+              color: '#a0a0a0',
               boxShadow: '0 4px 12px rgba(159, 18, 57, 0.08)',
             }}
           >
@@ -203,7 +203,7 @@ export default async function ExternalCuesPage() {
                 border: '1px solid #2a2a2a',
                 borderRadius: '6px',
                 padding: '1rem 1.25rem',
-                boxShadow: '0 8px 24px rgba(15, 23, 42, 0.04)',
+                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.04)',
               }}
             >
               <div style={{ fontSize: '0.85rem', color: '#666666', marginBottom: '0.35rem' }}>
@@ -244,7 +244,7 @@ export default async function ExternalCuesPage() {
                     border: '1px solid #2a2a2a',
                     borderRadius: '8px',
                     padding: '1.25rem',
-                    boxShadow: '0 10px 30px rgba(15, 23, 42, 0.05)',
+                    boxShadow: '0 10px 30px rgba(0, 0, 0, 0.05)',
                   }}
                 >
                   <div
