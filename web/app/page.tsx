@@ -36,12 +36,12 @@ function getSeverity(rank: number | null | undefined): { label: string; color: s
 
 function getStatusStyle(status: string | null | undefined): { color: string; bg: string } {
   switch (status) {
-    case 'new': return { color: '#D94436', bg: '#1a1a1a' };
+    case 'new': return { color: '#D94436', bg: '#ffffff' };
     case 'in_review': return { color: '#fde68a', bg: '#713f12' };
     case 'escalated': return { color: '#fca5a5', bg: '#7f1d1d' };
     case 'resolved': return { color: '#86efac', bg: '#14532d' };
-    case 'dismissed': return { color: '#a0a0a0', bg: '#1a1a1a' };
-    default: return { color: '#a0a0a0', bg: '#1a1a1a' };
+    case 'dismissed': return { color: '#666666', bg: '#ffffff' };
+    default: return { color: '#666666', bg: '#ffffff' };
   }
 }
 
@@ -122,10 +122,10 @@ export default async function QueuePage(props: { searchParams?: Promise<SearchPa
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-        <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: '#ffffff' }}>
+        <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: '#1a1a1a' }}>
           Case Queue
         </h1>
-        <span style={{ color: '#666666', fontSize: '12px' }}>
+        <span style={{ color: '#999999', fontSize: '12px' }}>
           {cases.length} cases • sorted by rank score
         </span>
       </div>
@@ -144,13 +144,13 @@ export default async function QueuePage(props: { searchParams?: Promise<SearchPa
                 fontSize: '12px',
                 fontWeight: 500,
                 textDecoration: 'none',
-                color: active ? '#ffffff' : '#a0a0a0',
-                backgroundColor: active ? '#1a1a1a' : 'transparent',
-                border: `1px solid ${active ? '#D94436' : '#2a2a2a'}`,
+                color: active ? '#1a1a1a' : '#666666',
+                backgroundColor: active ? '#ffffff' : 'transparent',
+                border: `1px solid ${active ? '#D94436' : '#e0e0e0'}`,
                 transition: 'all 0.15s',
               }}
             >
-              {tab.label} <span style={{ color: '#666666', marginLeft: '4px' }}>{tab.count}</span>
+              {tab.label} <span style={{ color: '#999999', marginLeft: '4px' }}>{tab.count}</span>
             </Link>
           );
         })}
@@ -169,11 +169,11 @@ export default async function QueuePage(props: { searchParams?: Promise<SearchPa
         gap: '8px',
         padding: '8px 12px',
         fontSize: '11px',
-        color: '#666666',
+        color: '#999999',
         fontWeight: 600,
         textTransform: 'uppercase' as const,
         letterSpacing: '0.5px',
-        borderBottom: '1px solid #2a2a2a',
+        borderBottom: '1px solid #e0e0e0',
       }}>
         <span>Case / Vessel</span>
         <span>Severity</span>
@@ -201,7 +201,7 @@ export default async function QueuePage(props: { searchParams?: Promise<SearchPa
               gridTemplateColumns: '1fr 100px 80px 90px 80px 60px 90px',
               gap: '8px',
               padding: '10px 12px',
-              borderBottom: '1px solid #1a1a1a',
+              borderBottom: '1px solid #e0e0e0',
               cursor: 'pointer',
               transition: 'background-color 0.1s',
               alignItems: 'center',
@@ -210,10 +210,10 @@ export default async function QueuePage(props: { searchParams?: Promise<SearchPa
             >
               {/* Case / Vessel */}
               <div>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: '#ffffff', marginBottom: '2px' }}>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a', marginBottom: '2px' }}>
                   {c.title || 'Untitled Case'}
                 </div>
-                <div style={{ fontSize: '11px', color: '#666666' }}>
+                <div style={{ fontSize: '11px', color: '#999999' }}>
                   {c.vessel_name || 'Unknown'} • MMSI {c.mmsi || '—'}
                 </div>
               </div>
@@ -228,7 +228,7 @@ export default async function QueuePage(props: { searchParams?: Promise<SearchPa
                 <div style={{ fontSize: '12px', fontWeight: 600, color: sev.color, marginBottom: '2px' }}>
                   {(c.rank_score ?? 0).toFixed(2)}
                 </div>
-                <div style={{ height: '3px', backgroundColor: '#2a2a2a', borderRadius: '2px', overflow: 'hidden' }}>
+                <div style={{ height: '3px', backgroundColor: '#e0e0e0', borderRadius: '2px', overflow: 'hidden' }}>
                   <div style={{ height: '100%', width: `${rankPct}%`, backgroundColor: sev.color, borderRadius: '2px' }} />
                 </div>
               </div>
@@ -241,12 +241,12 @@ export default async function QueuePage(props: { searchParams?: Promise<SearchPa
               </div>
 
               {/* Evidence */}
-              <div style={{ fontSize: '12px', color: '#a0a0a0', textAlign: 'center' }}>
+              <div style={{ fontSize: '12px', color: '#666666', textAlign: 'center' }}>
                 {c.evidence_count ?? 0}
               </div>
 
               {/* Time */}
-              <div style={{ fontSize: '11px', color: '#666666' }}>
+              <div style={{ fontSize: '11px', color: '#999999' }}>
                 {formatTime(c.start_observed_at)}
               </div>
 
@@ -260,7 +260,7 @@ export default async function QueuePage(props: { searchParams?: Promise<SearchPa
       })}
 
       {cases.length === 0 && !error && (
-        <div style={{ textAlign: 'center', padding: '40px', color: '#666666', fontSize: '14px' }}>
+        <div style={{ textAlign: 'center', padding: '40px', color: '#999999', fontSize: '14px' }}>
           No cases found{statusFilter ? ` with status "${statusFilter}"` : ''}.
         </div>
       )}

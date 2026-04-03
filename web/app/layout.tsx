@@ -22,8 +22,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body style={{
         margin: 0,
         padding: 0,
-        backgroundColor: '#0c0c0c',
-        color: '#ffffff',
+        backgroundColor: '#f5f5f5',
+        color: '#1a1a1a',
         fontFamily: "'IBM Plex Mono', 'Courier New', monospace",
         minHeight: '100vh',
       }}>
@@ -33,21 +33,21 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           justifyContent: 'space-between',
           padding: '0 20px',
           height: '48px',
-          backgroundColor: '#0c0c0c',
-          borderBottom: '1px solid #1a1a1a',
+          backgroundColor: '#f5f5f5',
+          borderBottom: '1px solid #e0e0e0',
           fontSize: '13px',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <span style={{ fontWeight: 700, fontSize: '15px', color: '#D94436', letterSpacing: '0.5px' }}>
               CUE2CASE
             </span>
-            <Link href="/" style={{ color: '#a0a0a0', textDecoration: 'none' }}>Queue</Link>
-            <Link href="/map" style={{ color: '#a0a0a0', textDecoration: 'none' }}>Map</Link>
-            <Link href="/external-cues" style={{ color: '#a0a0a0', textDecoration: 'none' }}>Cues</Link>
+            <Link href="/" style={{ color: '#666666', textDecoration: 'none' }}>Queue</Link>
+            <Link href="/map" style={{ color: '#666666', textDecoration: 'none' }}>Map</Link>
+            <Link href="/external-cues" style={{ color: '#666666', textDecoration: 'none' }}>Cues</Link>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <span style={{ color: '#D94436', fontSize: '11px' }}>● DUQM PROFILE ACTIVE</span>
-            <span style={{ color: '#666666', fontSize: '11px' }}>OPERATOR: ABDULLAH</span>
+            <span style={{ color: '#999999', fontSize: '11px' }}>OPERATOR: ABDULLAH</span>
           </div>
         </nav>
         <main style={{ padding: '16px 20px' }}>
