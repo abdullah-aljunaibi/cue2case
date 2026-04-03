@@ -8,11 +8,11 @@ const apiUrl =
 
 const COLORS = {
   bg: '#f5f5f5',
-  panel: '#ffffff',
+  panel: '#1a1a1a',
   border: '#e0e0e0',
   accent: '#D94436',
-  text: '#1a1a1a',
-  secondary: '#666666',
+  text: '#ffffff',
+  secondary: '#999999',
   tertiary: '#999999',
 };
 
@@ -131,7 +131,7 @@ function getAlertTimestamp(alert: AlertItem) {
 function getSeverityColor(severity?: string | number | null) {
   const num = typeof severity === 'number' ? severity : parseFloat(String(severity ?? '0'));
   if (num >= 0.8) return COLORS.accent;
-  if (num >= 0.5) return '#1a1a1a';
+  if (num >= 0.5) return '#ffffff';
   return COLORS.secondary;
 }
 

@@ -36,12 +36,12 @@ function getSeverity(rank: number | null | undefined): { label: string; color: s
 
 function getStatusStyle(status: string | null | undefined): { color: string; bg: string } {
   switch (status) {
-    case 'new': return { color: '#D94436', bg: '#ffffff' };
+    case 'new': return { color: '#D94436', bg: '#f0f0f0' };
     case 'in_review': return { color: '#fde68a', bg: '#713f12' };
     case 'escalated': return { color: '#fca5a5', bg: '#7f1d1d' };
     case 'resolved': return { color: '#86efac', bg: '#14532d' };
-    case 'dismissed': return { color: '#666666', bg: '#ffffff' };
-    default: return { color: '#666666', bg: '#ffffff' };
+    case 'dismissed': return { color: '#999999', bg: '#f0f0f0' };
+    default: return { color: '#999999', bg: '#f0f0f0' };
   }
 }
 
@@ -122,7 +122,7 @@ export default async function QueuePage(props: { searchParams?: Promise<SearchPa
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-        <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: '#1a1a1a' }}>
+        <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: '#ffffff' }}>
           Case Queue
         </h1>
         <span style={{ color: '#999999', fontSize: '12px' }}>
@@ -144,8 +144,8 @@ export default async function QueuePage(props: { searchParams?: Promise<SearchPa
                 fontSize: '12px',
                 fontWeight: 500,
                 textDecoration: 'none',
-                color: active ? '#1a1a1a' : '#666666',
-                backgroundColor: active ? '#ffffff' : 'transparent',
+                color: active ? '#ffffff' : '#999999',
+                backgroundColor: active ? '#1a1a1a' : 'transparent',
                 border: `1px solid ${active ? '#D94436' : '#e0e0e0'}`,
                 transition: 'all 0.15s',
               }}
@@ -210,7 +210,7 @@ export default async function QueuePage(props: { searchParams?: Promise<SearchPa
             >
               {/* Case / Vessel */}
               <div>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a', marginBottom: '2px' }}>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: '#ffffff', marginBottom: '2px' }}>
                   {c.title || 'Untitled Case'}
                 </div>
                 <div style={{ fontSize: '11px', color: '#999999' }}>
@@ -241,7 +241,7 @@ export default async function QueuePage(props: { searchParams?: Promise<SearchPa
               </div>
 
               {/* Evidence */}
-              <div style={{ fontSize: '12px', color: '#666666', textAlign: 'center' }}>
+              <div style={{ fontSize: '12px', color: '#999999', textAlign: 'center' }}>
                 {c.evidence_count ?? 0}
               </div>
 

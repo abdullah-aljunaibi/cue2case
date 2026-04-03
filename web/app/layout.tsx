@@ -23,7 +23,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         margin: 0,
         padding: 0,
         backgroundColor: '#f5f5f5',
-        color: '#1a1a1a',
+        color: '#ffffff',
         fontFamily: "'IBM Plex Mono', 'Courier New', monospace",
         minHeight: '100vh',
       }}>
@@ -41,9 +41,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <span style={{ fontWeight: 700, fontSize: '15px', color: '#D94436', letterSpacing: '0.5px' }}>
               CUE2CASE
             </span>
-            <Link href="/" style={{ color: '#666666', textDecoration: 'none' }}>Queue</Link>
-            <Link href="/map" style={{ color: '#666666', textDecoration: 'none' }}>Map</Link>
-            <Link href="/external-cues" style={{ color: '#666666', textDecoration: 'none' }}>Cues</Link>
+            <Link href="/" style={{ color: '#999999', textDecoration: 'none' }}>Queue</Link>
+            <Link href="/map" style={{ color: '#999999', textDecoration: 'none' }}>Map</Link>
+            <Link href="/external-cues" style={{ color: '#999999', textDecoration: 'none' }}>Cues</Link>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <span style={{ color: '#D94436', fontSize: '11px' }}>● DUQM PROFILE ACTIVE</span>

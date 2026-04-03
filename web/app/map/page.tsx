@@ -176,7 +176,7 @@ function getMarkerStyle(selected: boolean) {
       }
     : {
         radius: 6,
-        color: '#2a2a2a',
+        color: '#e0e0e0',
         weight: 2,
         fillColor: '#D94436',
         fillOpacity: 0.78,
@@ -281,7 +281,7 @@ export default function MapPage() {
         zoomControl: true,
       });
 
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
         attribution: '&copy; OpenStreetMap contributors',
         maxZoom: 19,
       }).addTo(map);
@@ -488,7 +488,7 @@ export default function MapPage() {
     <main
       style={{
         fontFamily: "'IBM Plex Mono', 'Courier New', monospace",
-        backgroundColor: '#0c0c0c',
+        backgroundColor: '#f5f5f5',
         color: '#ffffff',
         minHeight: '100vh',
         padding: '0',
@@ -500,7 +500,7 @@ export default function MapPage() {
             marginBottom: '12px',
             padding: '12px 16px',
             backgroundColor: '#1a1a1a',
-            border: '1px solid #2a2a2a',
+            border: '1px solid #e0e0e0',
             borderRadius: '8px',
           }}
         >
@@ -519,7 +519,7 @@ export default function MapPage() {
             ← Back to queue
           </Link>
           <h1 style={{ margin: '0 0 4px', fontSize: '16px', fontWeight: 700 }}>Tactical Map</h1>
-          <p style={{ margin: 0, color: '#666666', fontSize: '12px' }}>
+          <p style={{ margin: 0, color: '#999999', fontSize: '12px' }}>
             Review mapped cases, confirm vessel movement, and jump straight into the active case.
           </p>
         </header>
@@ -552,7 +552,7 @@ export default function MapPage() {
         >
           <aside
             style={{
-              border: '1px solid #2a2a2a',
+              border: '1px solid #e0e0e0',
               borderRadius: '8px',
               padding: '12px',
               backgroundColor: '#1a1a1a',
@@ -564,7 +564,7 @@ export default function MapPage() {
           >
             <div>
               <h2 style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: 700 }}>Cases</h2>
-              <p style={{ margin: 0, color: '#666666', fontSize: '11px' }}>
+              <p style={{ margin: 0, color: '#999999', fontSize: '11px' }}>
                 Select a case to center the map, review vessel movement, and continue into case handling.
               </p>
             </div>
@@ -585,12 +585,12 @@ export default function MapPage() {
                   key={item.label}
                   style={{
                     padding: '8px',
-                    border: '1px solid #2a2a2a',
+                    border: '1px solid #e0e0e0',
                     borderRadius: '6px',
-                    backgroundColor: '#0c0c0c',
+                    backgroundColor: '#f5f5f5',
                   }}
                 >
-                  <div style={{ fontSize: '0.76rem', color: '#666666', marginBottom: '0.2rem' }}>{item.label}</div>
+                  <div style={{ fontSize: '0.76rem', color: '#999999', marginBottom: '0.2rem' }}>{item.label}</div>
                   <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{item.value}</div>
                 </div>
               ))}
@@ -600,9 +600,9 @@ export default function MapPage() {
               style={{
                 padding: '8px 10px',
                 borderRadius: '6px',
-                backgroundColor: '#0c0c0c',
-                border: '1px solid #2a2a2a',
-                color: '#666666',
+                backgroundColor: '#f5f5f5',
+                border: '1px solid #e0e0e0',
+                color: '#999999',
                 fontSize: '0.9rem',
                 lineHeight: 1.5,
               }}
@@ -614,12 +614,12 @@ export default function MapPage() {
               {isLoading ? (
                 <div
                   style={{
-                    border: '1px dashed #2a2a2a',
+                    border: '1px dashed #e0e0e0',
                     borderRadius: '6px',
                     padding: '12px',
                     textAlign: 'center',
-                    color: '#666666',
-                    backgroundColor: '#0c0c0c',
+                    color: '#999999',
+                    backgroundColor: '#f5f5f5',
                   }}
                 >
                   Loading map data...
@@ -627,12 +627,12 @@ export default function MapPage() {
               ) : cases.length === 0 ? (
                 <div
                   style={{
-                    border: '1px dashed #2a2a2a',
+                    border: '1px dashed #e0e0e0',
                     borderRadius: '6px',
                     padding: '12px',
                     textAlign: 'center',
-                    color: '#666666',
-                    backgroundColor: '#0c0c0c',
+                    color: '#999999',
+                    backgroundColor: '#f5f5f5',
                   }}
                 >
                   No mapped cases are ready for review yet.
@@ -650,10 +650,10 @@ export default function MapPage() {
                       style={{
                         textAlign: 'left',
                         width: '100%',
-                        border: selected ? '1px solid #D94436' : '1px solid #2a2a2a',
+                        border: selected ? '1px solid #D94436' : '1px solid #e0e0e0',
                         borderRadius: '6px',
                         padding: '10px',
-                        backgroundColor: selected ? '#1a1a1a' : '#0c0c0c',
+                        backgroundColor: selected ? '#1a1a1a' : '#f5f5f5',
                         color: '#ffffff',
                         cursor: 'pointer',
                         boxShadow: selected ? '0 0 0 1px rgba(217, 68, 54, 0.12)' : 'none',
@@ -672,7 +672,7 @@ export default function MapPage() {
                           <div style={{ fontWeight: 700, color: '#ffffff', marginBottom: '2px', fontSize: '13px' }}>
                             {getCaseLabel(item)}
                           </div>
-                          <div style={{ color: '#a0a0a0', fontSize: '11px' }}>{formatText(item.title)}</div>
+                          <div style={{ color: '#999999', fontSize: '11px' }}>{formatText(item.title)}</div>
                         </div>
                         <span
                           style={{
@@ -682,9 +682,9 @@ export default function MapPage() {
                             padding: '0.24rem 0.55rem',
                             fontSize: '0.75rem',
                             fontWeight: 700,
-                            backgroundColor: selected ? '#1a1a1a' : '#0c0c0c',
-                            border: '1px solid #2a2a2a',
-                            color: '#a0a0a0',
+                            backgroundColor: selected ? '#1a1a1a' : '#f5f5f5',
+                            border: '1px solid #e0e0e0',
+                            color: '#999999',
                             whiteSpace: 'nowrap',
                           }}
                         >
@@ -700,21 +700,21 @@ export default function MapPage() {
                           marginBottom: '0.65rem',
                         }}
                       >
-                        <div style={{ fontSize: '11px', color: '#a0a0a0' }}>
-                          <div style={{ color: '#666666' }}>Rank</div>
+                        <div style={{ fontSize: '11px', color: '#999999' }}>
+                          <div style={{ color: '#999999' }}>Rank</div>
                           <div style={{ fontWeight: 700, color: '#ffffff' }}>{formatScore(item.rank_score)}</div>
                         </div>
-                        <div style={{ fontSize: '11px', color: '#a0a0a0' }}>
-                          <div style={{ color: '#666666' }}>Anomaly</div>
+                        <div style={{ fontSize: '11px', color: '#999999' }}>
+                          <div style={{ color: '#999999' }}>Anomaly</div>
                           <div style={{ fontWeight: 700, color: '#ffffff' }}>{formatScore(item.anomaly_score)}</div>
                         </div>
-                        <div style={{ fontSize: '11px', color: '#a0a0a0' }}>
-                          <div style={{ color: '#666666' }}>Confidence</div>
+                        <div style={{ fontSize: '11px', color: '#999999' }}>
+                          <div style={{ color: '#999999' }}>Confidence</div>
                           <div style={{ fontWeight: 700, color: '#ffffff' }}>{formatScore(item.confidence_score)}</div>
                         </div>
                       </div>
 
-                      <div style={{ color: '#666666', fontSize: '11px', lineHeight: 1.5 }}>
+                      <div style={{ color: '#999999', fontSize: '11px', lineHeight: 1.5 }}>
                         <div>MMSI: {item.mmsi ?? '—'}</div>
                         <div>
                           Coordinates:{' '}
@@ -734,7 +734,7 @@ export default function MapPage() {
             <section
               style={{
                 backgroundColor: '#1a1a1a',
-                border: '1px solid #2a2a2a',
+                border: '1px solid #e0e0e0',
                 borderRadius: '8px',
                 padding: '12px',
               }}
@@ -750,11 +750,11 @@ export default function MapPage() {
               >
                 <div>
                   <h2 style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: 700 }}>Operational Map</h2>
-                  <p style={{ margin: 0, color: '#666666', fontSize: '11px' }}>
+                  <p style={{ margin: 0, color: '#999999', fontSize: '11px' }}>
                     Monitor mapped case positions and the latest available vessel route for the selected record.
                   </p>
                 </div>
-                <div style={{ color: '#a0a0a0', fontSize: '11px', textAlign: 'right' }}>
+                <div style={{ color: '#999999', fontSize: '11px', textAlign: 'right' }}>
                   <div>Selected: {selectedCase ? getCaseLabel(selectedCase) : 'No case selected'}</div>
                   <div>
                     {trackLoading
@@ -797,8 +797,8 @@ export default function MapPage() {
                       width: '100%',
                       borderRadius: '8px',
                       overflow: 'hidden',
-                      border: '1px solid #2a2a2a',
-                      backgroundColor: '#0c0c0c',
+                      border: '1px solid #e0e0e0',
+                      backgroundColor: '#f5f5f5',
                     }}
                   />
                 )}
@@ -826,7 +826,7 @@ export default function MapPage() {
             <section
               style={{
                 backgroundColor: '#1a1a1a',
-                border: '1px solid #2a2a2a',
+                border: '1px solid #e0e0e0',
                 borderRadius: '8px',
                 padding: '12px',
               }}
@@ -891,11 +891,11 @@ export default function MapPage() {
                         style={{
                           padding: '8px',
                           borderRadius: '6px',
-                          border: '1px solid #2a2a2a',
-                          backgroundColor: '#0c0c0c',
+                          border: '1px solid #e0e0e0',
+                          backgroundColor: '#f5f5f5',
                         }}
                       >
-                        <div style={{ fontSize: '0.78rem', color: '#666666', marginBottom: '0.22rem' }}>
+                        <div style={{ fontSize: '0.78rem', color: '#999999', marginBottom: '0.22rem' }}>
                           {item.label}
                         </div>
                         <div style={{ fontWeight: 700, color: '#ffffff' }}>{item.value}</div>
@@ -920,7 +920,7 @@ export default function MapPage() {
                         style={{
                           padding: '8px',
                           borderRadius: '6px',
-                          backgroundColor: '#0c0c0c',
+                          backgroundColor: '#f5f5f5',
                           color: '#ffffff',
                         }}
                       >
@@ -950,11 +950,11 @@ export default function MapPage() {
               ) : (
                 <div
                   style={{
-                    border: '1px dashed #2a2a2a',
+                    border: '1px dashed #e0e0e0',
                     borderRadius: '6px',
                     padding: '12px',
-                    color: '#666666',
-                    backgroundColor: '#0c0c0c',
+                    color: '#999999',
+                    backgroundColor: '#f5f5f5',
                   }}
                 >
                   Choose a case from the list or click a marker to review details and continue into the case record.

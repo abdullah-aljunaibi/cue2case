@@ -11,15 +11,15 @@ const API =
     : 'http://localhost:8000';
 
 const COLORS = {
-  bg: '#0c0c0c',
+  bg: '#f5f5f5',
   card: '#1a1a1a',
-  border: '#2a2a2a',
+  border: '#e0e0e0',
   text: '#ffffff',
-  muted: '#a0a0a0',
+  muted: '#999999',
   blue: '#D94436',
   red: '#D94436',
-  yellow: '#a0a0a0',
-  green: '#a0a0a0',
+  yellow: '#999999',
+  green: '#999999',
   purple: '#D94436',
 };
 
@@ -638,7 +638,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                               <span>{label}</span>
                               <span style={{ color: COLORS.muted }}>{typeof raw === 'number' ? raw.toFixed(3) : '—'}</span>
                             </div>
-                            <div style={{ height: '10px', background: '#0c0c0c', borderRadius: '999px', overflow: 'hidden', border: `1px solid ${COLORS.border}` }}>
+                            <div style={{ height: '10px', background: '#f5f5f5', borderRadius: '999px', overflow: 'hidden', border: `1px solid ${COLORS.border}` }}>
                               <div style={{ width: `${percent}%`, height: '100%', background: barColor, opacity: 0.9 }} />
                             </div>
                           </div>
