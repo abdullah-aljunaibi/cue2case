@@ -112,7 +112,7 @@ def generate_narrative(case_id: str) -> Optional[Dict[str, Any]]:
             ic.confidence_score,
             v.vessel_name,
             v.vessel_type,
-            v.flag
+            v.vessel_type AS vessel_type_code
         FROM investigation_case ic
         LEFT JOIN vessel v ON v.mmsi = ic.mmsi
         WHERE ic.id = %s
@@ -146,7 +146,7 @@ def generate_narrative(case_id: str) -> Optional[Dict[str, Any]]:
 
     vessel_name = case_data.get("vessel_name") or "Unknown vessel"
     vessel_type = _format_vessel_type(case_data.get("vessel_type"))
-    vessel_flag = case_data.get("flag") or "Unknown"
+    vessel_flag = "Unknown"
     start_time = case_data.get("start_observed_at") or case_data.get("created_at")
     end_time = case_data.get("end_observed_at") or case_data.get("updated_at") or start_time
     priority = case_data.get("priority") or "unknown"

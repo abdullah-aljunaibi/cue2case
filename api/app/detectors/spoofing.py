@@ -1,9 +1,12 @@
-"""Detector for AIS spoofing and GPS manipulation patterns."""
+"""Detector 5: Spoofing / GPS Manipulation.
+
+Flags impossible speed jumps, teleport clusters, positions on land,
+and duplicate timestamps with conflicting positions.
+"""
 
 import json
 import math
 import os
-from datetime import timedelta
 from itertools import groupby
 
 import psycopg2
@@ -15,15 +18,13 @@ DATABASE_URL = os.environ.get(
 )
 
 IMPOSSIBLE_SPEED_THRESHOLD_KTS = 60.0
-TELEPORT_DISTANCE_THRESHOLD_NM = 100.0
-TELEPORT_WINDOW = timedelta(minutes=10)
+TELEPORT_DISTANCE_NM = 100.0
+TELEPORT_TIME_SECONDS = 600  # 10 minutes
 
-# Simple inland bounding boxes near Duqm where legitimate vessel positions are unlikely.
-# Each tuple is (min_lat, max_lat, min_lon, max_lon, label).
-DUQM_LAND_BBOXES = [
-    (19.55, 19.72, 57.56, 57.80, "duqm_inland_north"),
-    (19.40, 19.55, 57.62, 57.92, "duqm_industrial_inland"),
-    (19.23, 19.40, 57.70, 57.98, "duqm_airport_inland"),
+# Duqm inland bounding boxes (simple rectangles known to be on land)
+LAND_BBOXES = [
+    {"label": "duqm_inland_west", "min_lat": 19.60, "max_lat": 19.75, "min_lon": 57.55, "max_lon": 57.65},
+    {"label": "duqm_inland_north", "min_lat": 19.75, "max_lat": 19.85, "min_lon": 57.65, "max_lon": 57.75},
 ]
 
 
@@ -42,295 +43,124 @@ def haversine_nm(lat1, lon1, lat2, lon2):
 
 
 def is_position_on_land(lat, lon):
-    """Return the matching Duqm inland bbox label when the position falls on land."""
-    for min_lat, max_lat, min_lon, max_lon, label in DUQM_LAND_BBOXES:
-        if min_lat <= lat <= max_lat and min_lon <= lon <= max_lon:
-            return label
+    """Check if position falls inside a known land bounding box."""
+    for bbox in LAND_BBOXES:
+        if bbox["min_lat"] <= lat <= bbox["max_lat"] and bbox["min_lon"] <= lon <= bbox["max_lon"]:
+            return bbox["label"]
     return None
-
-
-def get_track_segment_id(cur, mmsi, observed_at):
-    """Best-effort lookup of the enclosing track segment for a position timestamp."""
-    cur.execute(
-        """
-        SELECT id
-        FROM track_segment
-        WHERE mmsi = %s
-          AND start_time <= %s
-          AND end_time >= %s
-        ORDER BY start_time DESC
-        LIMIT 1
-        """,
-        (mmsi, observed_at, observed_at),
-    )
-    row = cur.fetchone()
-    return row[0] if row else None
-
-
-
-def build_alert(
-    cur,
-    *,
-    mmsi,
-    title,
-    description,
-    severity,
-    latitude,
-    longitude,
-    detected_at,
-    start_observed_at,
-    end_observed_at,
-    metadata,
-):
-    """Build an alert row for bulk insertion."""
-    return (
-        mmsi,
-        "spoofing",
-        title,
-        description,
-        severity,
-        latitude,
-        longitude,
-        detected_at,
-        start_observed_at,
-        end_observed_at,
-        json.dumps(metadata),
-        get_track_segment_id(cur, mmsi, detected_at),
-    )
-
 
 
 def detect_spoofing():
     """Run spoofing detection for impossible jumps, teleports, land hits, and duplicate timestamps."""
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
-    cur_track = conn.cursor()
 
     try:
+        # Fetch all positions ordered by vessel and time
         cur.execute(
             """
-            SELECT id, mmsi, observed_at, ST_X(geom) AS lon, ST_Y(geom) AS lat
+            SELECT mmsi, observed_at, ST_Y(geom) AS lat, ST_X(geom) AS lon
             FROM ais_position
-            ORDER BY mmsi, observed_at, id
+            ORDER BY mmsi, observed_at
             """
         )
         rows = cur.fetchall()
         alerts = []
 
-        for mmsi, group in groupby(rows, key=lambda row: row[1]):
+        for mmsi, group in groupby(rows, key=lambda row: row[0]):
             positions = list(group)
-            if not positions:
-                continue
 
-            for position in positions:
-                _, _, observed_at, lon, lat = position
+            # Check each position for land
+            for _, observed_at, lat, lon in positions:
                 land_label = is_position_on_land(lat, lon)
                 if land_label:
-                    alerts.append(
-                        build_alert(
-                            cur_track,
-                            mmsi=mmsi,
-                            title="AIS position reported inland near Duqm",
-                            description=(
-                                f"Vessel {mmsi} reported AIS position at {lat:.5f}, {lon:.5f}, "
-                                f"inside inland area {land_label} near Duqm."
-                            ),
-                            severity=2,
-                            latitude=lat,
-                            longitude=lon,
-                            detected_at=observed_at,
-                            start_observed_at=observed_at,
-                            end_observed_at=observed_at,
-                            metadata={
-                                "subtype": "position_on_land",
-                                "land_bbox": land_label,
-                                "latitude": lat,
-                                "longitude": lon,
-                            },
-                        )
-                    )
+                    alerts.append((
+                        mmsi, "spoofing", 0.5, observed_at, lon, lat,
+                        json.dumps({"subtype": "position_on_land", "land_bbox": land_label, "lat": lat, "lon": lon}),
+                        f"Vessel {mmsi} reported position at {lat:.5f}, {lon:.5f} inside inland area {land_label}."
+                    ))
 
             if len(positions) < 2:
                 continue
 
+            # Check consecutive pairs for speed/teleport
             for i in range(1, len(positions)):
-                prev = positions[i - 1]
-                curr = positions[i]
+                _, prev_time, prev_lat, prev_lon = positions[i - 1]
+                _, curr_time, curr_lat, curr_lon = positions[i]
 
-                prev_id, _, prev_time, prev_lon, prev_lat = prev
-                curr_id, _, curr_time, curr_lon, curr_lat = curr
-
-                time_diff = curr_time - prev_time
-                seconds = time_diff.total_seconds()
+                seconds = (curr_time - prev_time).total_seconds()
                 if seconds <= 0:
                     continue
 
                 distance_nm = haversine_nm(prev_lat, prev_lon, curr_lat, curr_lon)
                 speed_kts = distance_nm / (seconds / 3600.0)
 
-                if speed_kts > IMPOSSIBLE_SPEED_THRESHOLD_KTS:
-                    alerts.append(
-                        build_alert(
-                            cur_track,
-                            mmsi=mmsi,
-                            title="Impossible AIS speed jump detected",
-                            description=(
-                                f"Vessel {mmsi} moved {distance_nm:.2f} nm in {seconds:.0f} seconds "
-                                f"({speed_kts:.1f} kt) between consecutive AIS reports."
-                            ),
-                            severity=3,
-                            latitude=curr_lat,
-                            longitude=curr_lon,
-                            detected_at=curr_time,
-                            start_observed_at=prev_time,
-                            end_observed_at=curr_time,
-                            metadata={
-                                "subtype": "impossible_speed_jump",
-                                "from_position_id": prev_id,
-                                "to_position_id": curr_id,
-                                "distance_nm": round(distance_nm, 3),
-                                "time_delta_seconds": round(seconds, 3),
-                                "calculated_speed_kts": round(speed_kts, 3),
-                                "from": {
-                                    "observed_at": prev_time.isoformat(),
-                                    "latitude": prev_lat,
-                                    "longitude": prev_lon,
-                                },
-                                "to": {
-                                    "observed_at": curr_time.isoformat(),
-                                    "latitude": curr_lat,
-                                    "longitude": curr_lon,
-                                },
-                            },
-                        )
-                    )
+                # Teleport: >100nm in <10 minutes
+                if distance_nm > TELEPORT_DISTANCE_NM and seconds < TELEPORT_TIME_SECONDS:
+                    alerts.append((
+                        mmsi, "spoofing", 0.9, curr_time, curr_lon, curr_lat,
+                        json.dumps({
+                            "subtype": "teleport", "distance_nm": round(distance_nm, 2),
+                            "time_seconds": round(seconds), "speed_kts": round(speed_kts, 1),
+                            "from": {"lat": prev_lat, "lon": prev_lon},
+                            "to": {"lat": curr_lat, "lon": curr_lon},
+                        }),
+                        f"Vessel {mmsi} teleported {distance_nm:.1f}nm in {seconds:.0f}s ({speed_kts:.0f}kt)."
+                    ))
+                # Impossible speed: >60kt
+                elif speed_kts > IMPOSSIBLE_SPEED_THRESHOLD_KTS:
+                    alerts.append((
+                        mmsi, "spoofing", 0.7, curr_time, curr_lon, curr_lat,
+                        json.dumps({
+                            "subtype": "impossible_speed", "speed_kts": round(speed_kts, 1),
+                            "distance_nm": round(distance_nm, 2), "time_seconds": round(seconds),
+                        }),
+                        f"Vessel {mmsi} moved {distance_nm:.1f}nm in {seconds:.0f}s ({speed_kts:.0f}kt)."
+                    ))
 
-                if distance_nm > TELEPORT_DISTANCE_THRESHOLD_NM and time_diff < TELEPORT_WINDOW:
-                    alerts.append(
-                        build_alert(
-                            cur_track,
-                            mmsi=mmsi,
-                            title="AIS teleport cluster detected",
-                            description=(
-                                f"Vessel {mmsi} appeared {distance_nm:.2f} nm away within "
-                                f"{seconds / 60.0:.1f} minutes between AIS reports."
-                            ),
-                            severity=4,
-                            latitude=curr_lat,
-                            longitude=curr_lon,
-                            detected_at=curr_time,
-                            start_observed_at=prev_time,
-                            end_observed_at=curr_time,
-                            metadata={
-                                "subtype": "teleport_cluster",
-                                "from_position_id": prev_id,
-                                "to_position_id": curr_id,
-                                "distance_nm": round(distance_nm, 3),
-                                "time_delta_seconds": round(seconds, 3),
-                                "time_delta_minutes": round(seconds / 60.0, 3),
-                                "from": {
-                                    "observed_at": prev_time.isoformat(),
-                                    "latitude": prev_lat,
-                                    "longitude": prev_lon,
-                                },
-                                "to": {
-                                    "observed_at": curr_time.isoformat(),
-                                    "latitude": curr_lat,
-                                    "longitude": curr_lon,
-                                },
-                            },
-                        )
-                    )
-
+        # Duplicate timestamps: same MMSI, same time, different positions >1km apart
         cur.execute(
             """
             SELECT
-                a.mmsi,
-                a.observed_at,
-                a.id,
-                ST_Y(a.geom) AS lat_a,
-                ST_X(a.geom) AS lon_a,
-                b.id,
-                ST_Y(b.geom) AS lat_b,
-                ST_X(b.geom) AS lon_b,
+                a.mmsi, a.observed_at,
+                ST_Y(a.geom) AS lat_a, ST_X(a.geom) AS lon_a,
+                ST_Y(b.geom) AS lat_b, ST_X(b.geom) AS lon_b,
                 ST_Distance(a.geom::geography, b.geom::geography) AS distance_meters
             FROM ais_position a
-            JOIN ais_position b
-              ON a.mmsi = b.mmsi
-             AND a.observed_at = b.observed_at
-             AND a.id < b.id
+            JOIN ais_position b ON a.mmsi = b.mmsi
+                AND a.observed_at = b.observed_at
+                AND a.id < b.id
             WHERE ST_Distance(a.geom::geography, b.geom::geography) > 1000
-            ORDER BY a.mmsi, a.observed_at, a.id, b.id
+            ORDER BY a.mmsi, a.observed_at
             """
         )
-
         for row in cur.fetchall():
-            (
-                mmsi,
-                observed_at,
-                position_a_id,
-                lat_a,
-                lon_a,
-                position_b_id,
-                lat_b,
-                lon_b,
-                distance_meters,
-            ) = row
-            alerts.append(
-                build_alert(
-                    cur_track,
-                    mmsi=mmsi,
-                    title="Duplicate AIS timestamps with conflicting positions",
-                    description=(
-                        f"Vessel {mmsi} reported multiple positions at {observed_at.isoformat()} "
-                        f"that were {distance_meters:.0f} meters apart."
-                    ),
-                    severity=2,
-                    latitude=lat_a,
-                    longitude=lon_a,
-                    detected_at=observed_at,
-                    start_observed_at=observed_at,
-                    end_observed_at=observed_at,
-                    metadata={
-                        "subtype": "duplicate_timestamp",
-                        "position_a_id": position_a_id,
-                        "position_b_id": position_b_id,
-                        "distance_meters": round(distance_meters, 3),
-                        "position_a": {"latitude": lat_a, "longitude": lon_a},
-                        "position_b": {"latitude": lat_b, "longitude": lon_b},
-                    },
-                )
-            )
+            mmsi, observed_at, lat_a, lon_a, lat_b, lon_b, dist_m = row
+            alerts.append((
+                mmsi, "spoofing", 0.6, observed_at, lon_a, lat_a,
+                json.dumps({
+                    "subtype": "duplicate_timestamp", "distance_meters": round(dist_m, 1),
+                    "position_a": {"lat": lat_a, "lon": lon_a},
+                    "position_b": {"lat": lat_b, "lon": lon_b},
+                }),
+                f"Vessel {mmsi} reported conflicting positions {dist_m:.0f}m apart at {observed_at.isoformat()}."
+            ))
 
         if alerts:
             execute_values(
                 cur,
                 """
-                INSERT INTO alert (
-                    mmsi,
-                    alert_type,
-                    title,
-                    description,
-                    severity,
-                    latitude,
-                    longitude,
-                    detected_at,
-                    start_observed_at,
-                    end_observed_at,
-                    metadata,
-                    track_segment_id
-                )
+                INSERT INTO alert (mmsi, alert_type, severity, observed_at, geom, details, explanation)
                 VALUES %s
                 """,
                 alerts,
-                template="(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)",
+                template="(%s, %s, %s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s::jsonb, %s)",
             )
             conn.commit()
 
         print(f"Spoofing detector: {len(alerts)} alerts generated.")
         return len(alerts)
     finally:
-        cur_track.close()
         cur.close()
         conn.close()
 

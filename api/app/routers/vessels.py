@@ -31,13 +31,8 @@ async def list_vessels(
             v.mmsi,
             v.vessel_name,
             v.vessel_type,
-            v.flag,
-            v.imo_number,
-            v.call_sign,
             v.length,
             v.width,
-            v.draft,
-            v.destination,
             v.created_at,
             COALESCE(case_counts.total_cases, 0) AS total_cases,
             COALESCE(alert_counts.total_alerts, 0) AS total_alerts,
@@ -54,7 +49,7 @@ async def list_vessels(
             GROUP BY mmsi
         ) alert_counts ON alert_counts.mmsi = v.mmsi
         LEFT JOIN (
-            SELECT mmsi, MAX(timestamp) AS last_seen
+            SELECT mmsi, MAX(observed_at) AS last_seen
             FROM ais_position
             GROUP BY mmsi
         ) last_position ON last_position.mmsi = v.mmsi
@@ -71,19 +66,14 @@ async def list_vessels(
 
 
 @router.get("/{mmsi}")
-async def get_vessel_detail(mmsi: int):
+async def get_vessel_detail(mmsi: str):
     vessel_query = """
         SELECT
             mmsi,
             vessel_name,
             vessel_type,
-            flag,
-            imo_number,
-            call_sign,
             length,
             width,
-            draft,
-            destination,
             created_at
         FROM vessel
         WHERE mmsi = %s
@@ -138,8 +128,8 @@ async def get_vessel_detail(mmsi: int):
             (SELECT COUNT(*) FROM investigation_case WHERE mmsi = %s) AS total_cases,
             (SELECT COUNT(*) FROM alert WHERE mmsi = %s) AS total_alerts,
             (SELECT COUNT(*) FROM ais_position WHERE mmsi = %s) AS total_positions,
-            (SELECT MIN(timestamp) FROM ais_position WHERE mmsi = %s) AS first_seen,
-            (SELECT MAX(timestamp) FROM ais_position WHERE mmsi = %s) AS last_seen
+            (SELECT MIN(observed_at) FROM ais_position WHERE mmsi = %s) AS first_seen,
+            (SELECT MAX(observed_at) FROM ais_position WHERE mmsi = %s) AS last_seen
     """
     alert_types_query = """
         SELECT alert_type, COUNT(*) AS count
