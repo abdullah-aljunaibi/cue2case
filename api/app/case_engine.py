@@ -87,15 +87,13 @@ def round_to_nearest_hour(timestamp):
     return rounded
 
 
-def case_signature(mmsi, title, start_observed_at, end_observed_at):
+def case_signature(mmsi, alert_types, start_observed_at):
     """Build a deterministic signature that survives case rebuilds."""
     rounded_start = round_to_nearest_hour(start_observed_at)
-    rounded_end = round_to_nearest_hour(end_observed_at)
     return (
         str(mmsi),
-        title or "",
+        tuple(sorted(alert_types)),
         rounded_start.isoformat() if rounded_start is not None else None,
-        rounded_end.isoformat() if rounded_end is not None else None,
     )
 
 
@@ -382,7 +380,7 @@ def build_case_record(mmsi, incident_index, alerts_list, vessel_info):
         "primary_lon": primary_alert["lon"],
         "primary_lat": primary_alert["lat"],
         "rank_score": rank_score,
-        "signature": case_signature(mmsi, title, incident_start, incident_end),
+        "signature": case_signature(mmsi, scores["alert_counts"].keys(), incident_start),
     }
 
 
@@ -424,6 +422,7 @@ def build_cases():
 
         existing_case_ids = [row[0] for row in existing_cases]
         existing_notes_by_case_id = defaultdict(list)
+        existing_alert_types_by_case_id = defaultdict(set)
         if existing_case_ids:
             cur.execute(
                 """
@@ -437,10 +436,27 @@ def build_cases():
             for note_row in cur.fetchall():
                 existing_notes_by_case_id[note_row[1]].append(note_row)
 
+            cur.execute(
+                """
+                SELECT case_id, metadata->>'alert_type' AS alert_type
+                FROM case_evidence
+                WHERE case_id = ANY(%s::uuid[])
+                  AND metadata ? 'alert_type'
+                """,
+                (existing_case_ids,),
+            )
+            for case_id, alert_type in cur.fetchall():
+                if alert_type:
+                    existing_alert_types_by_case_id[case_id].add(alert_type)
+
         preserved_cases_by_signature = {}
         for row in existing_cases:
             case_id, mmsi, title, start_observed_at, end_observed_at, status, assigned_to = row
-            signature = case_signature(mmsi, title, start_observed_at, end_observed_at)
+            signature = case_signature(
+                mmsi,
+                existing_alert_types_by_case_id.get(case_id, ()),
+                start_observed_at,
+            )
             preserved_cases_by_signature[signature] = {
                 "status": status,
                 "assigned_to": assigned_to,

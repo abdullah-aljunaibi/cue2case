@@ -187,17 +187,19 @@ def detect_loitering():
                 if len(cluster) < MIN_STOP_START_EPISODES:
                     continue
 
-                # Find positions in this cluster's time range
                 cluster_start = cluster[0][0]
                 cluster_end = cluster[-1][1]
+
+                # Only use low-speed stop-episode positions when deriving the
+                # cluster centroid and geofence context.
                 cluster_positions = [
-                    p for p in positions
-                    if cluster_start <= p[1] <= cluster_end
+                    p
+                    for p in positions
+                    if any(ep_start <= p[1] <= ep_end for ep_start, ep_end, _ in cluster)
                 ]
                 if not cluster_positions:
                     continue
 
-                # Centroid of cluster positions
                 avg_lon = sum(p[2] for p in cluster_positions) / len(cluster_positions)
                 avg_lat = sum(p[3] for p in cluster_positions) / len(cluster_positions)
 
