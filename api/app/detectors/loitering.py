@@ -22,6 +22,7 @@ MIN_DWELL_MINUTES = 120     # 2 hours minimum dwell
 MAX_SPREAD_NM = 0.5         # nautical miles for tight clustering
 MIN_STOP_DURATION_SEC = 300  # 5 min minimum per stop episode
 MIN_STOP_START_EPISODES = 3  # repeated stop-start count
+MAX_STOP_CLUSTER_DURATION_SEC = 8 * 3600  # cap cluster span at 8 hours
 
 
 def haversine_nm(lat1, lon1, lat2, lon2):
@@ -166,15 +167,20 @@ def detect_loitering():
 
         # --- Stop-Start Pattern Alerts (clustered by 2-hour proximity) ---
         if len(stop_episodes) >= MIN_STOP_START_EPISODES:
-            # Cluster episodes within 2 hours of each other
+            # Cluster episodes within 2 hours of each other, but prevent one
+            # rolling chain from spanning multiple days.
             clusters = []
             current_cluster = [stop_episodes[0]]
+            cluster_start = stop_episodes[0][0]
             for ep in stop_episodes[1:]:
-                if (ep[0] - current_cluster[-1][1]).total_seconds() <= 7200:  # 2 hours
+                within_gap = (ep[0] - current_cluster[-1][1]).total_seconds() <= 7200
+                within_max_span = (ep[1] - cluster_start).total_seconds() <= MAX_STOP_CLUSTER_DURATION_SEC
+                if within_gap and within_max_span:
                     current_cluster.append(ep)
                 else:
                     clusters.append(current_cluster)
                     current_cluster = [ep]
+                    cluster_start = ep[0]
             clusters.append(current_cluster)
 
             for cluster in clusters:
