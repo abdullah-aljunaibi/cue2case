@@ -4,7 +4,7 @@ Assembles a time-ordered narrative from AIS positions, alerts,
 cues, notes, and status changes for a given case.
 """
 
-import os
+import json
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 from uuid import UUID
@@ -12,10 +12,9 @@ from uuid import UUID
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL_SYNC",
-    "postgresql://cue2case:cue2case_dev@localhost:5433/cue2case",
-)
+from api.app.db import get_database_url
+
+DATABASE_URL = get_database_url()
 
 
 def _iso(value: Any) -> str:
@@ -30,21 +29,42 @@ def _iso(value: Any) -> str:
 
 def _narrative_for_position(position: Dict[str, Any], vessel_name: str, mmsi: str, is_first: bool) -> str:
     label = vessel_name or "Unknown vessel"
-    timestamp = position["observed_at"].astimezone(timezone.utc).strftime("%H:%M UTC")
+    observed_at = position.get("observed_at")
+    if isinstance(observed_at, datetime):
+        if observed_at.tzinfo is None:
+            observed_at = observed_at.replace(tzinfo=timezone.utc)
+        timestamp = observed_at.astimezone(timezone.utc).strftime("%H:%M UTC")
+    else:
+        timestamp = "unknown time"
     sog = position.get("sog")
     lon = position.get("lon")
     lat = position.get("lat")
+    coordinate_text = ""
+    if lat is not None and lon is not None:
+        coordinate_text = f" near ({float(lat):.4f}, {float(lon):.4f})"
     if is_first:
         return f"Vessel {label} (MMSI {mmsi}) first detected at {timestamp}"
     if sog is not None:
-        return f"AIS position update at {timestamp} — speed {float(sog):.1f} kn near ({float(lat):.4f}, {float(lon):.4f})"
-    return f"AIS position update at {timestamp} near ({float(lat):.4f}, {float(lon):.4f})"
+        return f"AIS position update at {timestamp} — speed {float(sog):.1f} kn{coordinate_text}"
+    return f"AIS position update at {timestamp}{coordinate_text}"
+
+
+def _as_dict(value: Any) -> Dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
 
 
 def _narrative_for_alert(alert: Dict[str, Any]) -> str:
     alert_type = str(alert.get("alert_type") or "alert").replace("_", " ")
     explanation = alert.get("explanation")
-    details = alert.get("details") or {}
+    details = _as_dict(alert.get("details"))
     if alert.get("alert_type") == "ais_silence":
         gap_minutes = details.get("gap_minutes") or details.get("duration_minutes")
         if isinstance(gap_minutes, (int, float)):
@@ -56,7 +76,7 @@ def _narrative_for_alert(alert: Dict[str, Any]) -> str:
 
 
 def _narrative_for_cue(cue: Dict[str, Any]) -> str:
-    data = cue.get("data") or {}
+    data = _as_dict(cue.get("data"))
     cue_type = str(cue.get("cue_type") or "other").replace("_", " ")
     source = cue.get("source") or "external source"
     if data.get("ofac_match") or data.get("watchlist_hit") or data.get("sanctions_match"):
@@ -75,7 +95,7 @@ def _narrative_for_note(note: Dict[str, Any]) -> str:
 
 
 def _narrative_for_status_change(entry: Dict[str, Any]) -> str:
-    details = entry.get("details") or {}
+    details = _as_dict(entry.get("details"))
     old = details.get("old")
     new = details.get("new")
     actor = entry.get("actor") or "system"

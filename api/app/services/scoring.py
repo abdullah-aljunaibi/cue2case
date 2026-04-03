@@ -5,17 +5,15 @@ why-now reasoning, and confidence explanation.
 """
 
 import json
-import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import psycopg2
 from psycopg2.extras import Json, RealDictCursor
 
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL_SYNC",
-    "postgresql://cue2case:cue2case_dev@localhost:5433/cue2case",
-)
+from api.app.db import get_database_url
+
+DATABASE_URL = get_database_url()
 
 CUE_TYPE_WEIGHTS = {
     "imagery": 0.18,
@@ -424,12 +422,13 @@ def batch_score_cases(case_ids: Optional[List[str]] = None) -> int:
                         """,
                         (breakdown["rank_score"], Json(breakdown), target_id),
                     )
-                    updated += cur.rowcount
+                    rows_updated = cur.rowcount
+                conn.commit()
+                updated += rows_updated
             except Exception as exc:
                 print(f"Failed to score case {target_id}: {exc}")
                 conn.rollback()
 
-        conn.commit()
         return updated
     except Exception:
         conn.rollback()

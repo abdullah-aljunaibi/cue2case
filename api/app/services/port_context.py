@@ -5,16 +5,14 @@ Replaces hardcoded heading assumptions with profile-driven logic.
 """
 
 import json
-import os
 from typing import Any, Dict, List, Optional
 
 import psycopg2
 from psycopg2.extras import Json, RealDictCursor
 
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL_SYNC",
-    "postgresql://cue2case:cue2case_dev@localhost:5433/cue2case",
-)
+from api.app.db import get_database_url
+
+DATABASE_URL = get_database_url()
 
 
 def _normalize_heading(heading: float) -> float:
