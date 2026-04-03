@@ -8,10 +8,10 @@ const apiUrl =
 
 const COLORS = {
   bg: '#f5f5f5',
-  panel: '#1a1a1a',
+  panel: '#ffffff',
   border: '#e0e0e0',
   accent: '#D94436',
-  text: '#ffffff',
+  text: '#1a1a1a',
   secondary: '#999999',
   tertiary: '#999999',
 };

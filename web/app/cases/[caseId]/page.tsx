@@ -12,9 +12,9 @@ const API =
 
 const COLORS = {
   bg: '#f5f5f5',
-  card: '#1a1a1a',
+  card: '#ffffff',
   border: '#e0e0e0',
-  text: '#ffffff',
+  text: '#1a1a1a',
   muted: '#999999',
   blue: '#D94436',
   red: '#D94436',
@@ -647,7 +647,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                     </div>
 
                     {score.benign_context ? (
-                      <div style={{ padding: '12px', borderRadius: '10px', background: '#1a1a1a', border: `1px solid ${COLORS.border}`, color: COLORS.muted }}>
+                      <div style={{ padding: '12px', borderRadius: '10px', background: '#ffffff', border: `1px solid ${COLORS.border}`, color: COLORS.muted }}>
                         <div style={{ color: COLORS.green, marginBottom: '6px', fontWeight: 600 }}>Benign context</div>
                         {score.benign_context}
                       </div>
@@ -677,7 +677,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                               borderRadius: '10px',
                               border: `1px solid rgba(217,68,54,0.35)`,
                               background: 'rgba(217,68,54,0.08)',
-                              color: '#ffffff',
+                              color: '#1a1a1a',
                             }}
                           >
                             {item}
@@ -703,7 +703,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                                   width: '22px',
                                   height: '22px',
                                   borderRadius: '999px',
-                                  background: '#1a1a1a',
+                                  background: '#ffffff',
                                   border: `1px solid ${color}`,
                                   color,
                                   display: 'flex',
@@ -731,7 +731,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                                     wordBreak: 'break-word',
                                     padding: '10px',
                                     borderRadius: '8px',
-                                    background: '#1a1a1a',
+                                    background: '#ffffff',
                                     border: `1px solid ${COLORS.border}`,
                                     color: COLORS.muted,
                                     fontSize: '12px',
@@ -770,7 +770,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                             padding: '12px',
                             borderRadius: '10px',
                             border: `1px solid ${COLORS.border}`,
-                            background: '#1a1a1a',
+                            background: '#ffffff',
                             display: 'grid',
                             gap: '8px',
                           }}
@@ -876,7 +876,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                             wordBreak: 'break-word',
                             padding: '12px',
                             borderRadius: '10px',
-                            background: '#1a1a1a',
+                            background: '#ffffff',
                             border: `1px solid ${COLORS.border}`,
                             maxHeight: '320px',
                             overflow: 'auto',
@@ -911,7 +911,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                     <div style={{ display: 'grid', gap: '10px' }}>
                       {notes.length ? (
                         notes.map((note, index) => (
-                          <div key={String(note.id || index)} style={{ padding: '12px', borderRadius: '10px', border: `1px solid ${COLORS.border}`, background: '#1a1a1a' }}>
+                          <div key={String(note.id || index)} style={{ padding: '12px', borderRadius: '10px', border: `1px solid ${COLORS.border}`, background: '#ffffff' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', marginBottom: '6px', flexWrap: 'wrap' }}>
                               <strong>{noteAuthor(note)}</strong>
                               <span style={{ color: COLORS.muted }}>{formatDate(note.created_at || note.updated_at)}</span>
@@ -937,7 +937,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                   <div style={{ display: 'grid', gap: '8px' }}>
                     {audit.length ? (
                       audit.map((item, index) => (
-                        <div key={String(item.id || index)} style={{ padding: '10px 12px', borderRadius: '10px', border: `1px solid ${COLORS.border}`, background: '#1a1a1a' }}>
+                        <div key={String(item.id || index)} style={{ padding: '10px 12px', borderRadius: '10px', border: `1px solid ${COLORS.border}`, background: '#ffffff' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '4px' }}>
                             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                               <Badge label={labelize(auditLabel(item))} color={COLORS.purple} />
@@ -975,7 +975,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                     alignItems: 'center',
                     justifyContent: 'center',
                     color: COLORS.muted,
-                    background: '#1a1a1a',
+                    background: '#ffffff',
                   }}
                 >
                   No map geometry on this case.
@@ -1028,7 +1028,7 @@ function Badge({ label, color }: { label: string; color: string }) {
         borderRadius: '999px',
         border: `1px solid ${color}`,
         color,
-        background: '#1a1a1a',
+        background: '#ffffff',
         fontSize: '11px',
         textTransform: 'uppercase',
         letterSpacing: '0.08em',
@@ -1043,10 +1043,10 @@ function Badge({ label, color }: { label: string; color: string }) {
 function buttonStyle(kind: 'primary' | 'secondary' | 'danger'): React.CSSProperties {
   const palette =
     kind === 'danger'
-      ? { border: COLORS.red, text: '#ffffff', background: 'transparent' }
+      ? { border: COLORS.red, text: '#1a1a1a', background: 'transparent' }
       : kind === 'secondary'
-        ? { border: COLORS.purple, text: '#ffffff', background: 'transparent' }
-        : { border: COLORS.blue, text: '#ffffff', background: 'transparent' };
+        ? { border: COLORS.purple, text: '#1a1a1a', background: 'transparent' }
+        : { border: COLORS.blue, text: '#1a1a1a', background: 'transparent' };
 
   return {
     padding: '10px 12px',
@@ -1065,7 +1065,7 @@ const inputStyle: React.CSSProperties = {
   padding: '10px 12px',
   borderRadius: '10px',
   border: `1px solid ${COLORS.border}`,
-  background: '#1a1a1a',
+  background: '#ffffff',
   color: COLORS.text,
   fontSize: '13px',
   outline: 'none',

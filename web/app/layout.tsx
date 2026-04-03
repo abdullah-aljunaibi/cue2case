@@ -23,7 +23,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         margin: 0,
         padding: 0,
         backgroundColor: '#f5f5f5',
-        color: '#ffffff',
+        color: '#1a1a1a',
         fontFamily: "'IBM Plex Mono', 'Courier New', monospace",
         minHeight: '100vh',
       }}>

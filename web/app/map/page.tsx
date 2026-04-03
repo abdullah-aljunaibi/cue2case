@@ -489,7 +489,7 @@ export default function MapPage() {
       style={{
         fontFamily: "'IBM Plex Mono', 'Courier New', monospace",
         backgroundColor: '#f5f5f5',
-        color: '#ffffff',
+        color: '#1a1a1a',
         minHeight: '100vh',
         padding: '0',
       }}
@@ -499,7 +499,7 @@ export default function MapPage() {
           style={{
             marginBottom: '12px',
             padding: '12px 16px',
-            backgroundColor: '#1a1a1a',
+            backgroundColor: '#ffffff',
             border: '1px solid #e0e0e0',
             borderRadius: '8px',
           }}
@@ -529,10 +529,10 @@ export default function MapPage() {
             style={{
               marginBottom: '12px',
               padding: '10px 14px',
-              backgroundColor: '#1a1a1a',
+              backgroundColor: '#ffffff',
               border: '1px solid #D94436',
               borderRadius: '6px',
-              color: '#ffffff',
+              color: '#1a1a1a',
             }}
           >
             <div style={{ fontWeight: 700, marginBottom: '0.35rem' }}>Unable to load map cases</div>
@@ -555,7 +555,7 @@ export default function MapPage() {
               border: '1px solid #e0e0e0',
               borderRadius: '8px',
               padding: '12px',
-              backgroundColor: '#1a1a1a',
+              backgroundColor: '#ffffff',
               display: 'grid',
               gap: '1rem',
               maxHeight: 'calc(100vh - 180px)',
@@ -653,8 +653,8 @@ export default function MapPage() {
                         border: selected ? '1px solid #D94436' : '1px solid #e0e0e0',
                         borderRadius: '6px',
                         padding: '10px',
-                        backgroundColor: selected ? '#1a1a1a' : '#f5f5f5',
-                        color: '#ffffff',
+                        backgroundColor: selected ? '#f0f0f0' : '#f5f5f5',
+                        color: '#1a1a1a',
                         cursor: 'pointer',
                         boxShadow: selected ? '0 0 0 1px rgba(217, 68, 54, 0.12)' : 'none',
                       }}
@@ -669,7 +669,7 @@ export default function MapPage() {
                         }}
                       >
                         <div>
-                          <div style={{ fontWeight: 700, color: '#ffffff', marginBottom: '2px', fontSize: '13px' }}>
+                          <div style={{ fontWeight: 700, color: '#1a1a1a', marginBottom: '2px', fontSize: '13px' }}>
                             {getCaseLabel(item)}
                           </div>
                           <div style={{ color: '#999999', fontSize: '11px' }}>{formatText(item.title)}</div>
@@ -682,7 +682,7 @@ export default function MapPage() {
                             padding: '0.24rem 0.55rem',
                             fontSize: '0.75rem',
                             fontWeight: 700,
-                            backgroundColor: selected ? '#1a1a1a' : '#f5f5f5',
+                            backgroundColor: selected ? '#f0f0f0' : '#f5f5f5',
                             border: '1px solid #e0e0e0',
                             color: '#999999',
                             whiteSpace: 'nowrap',
@@ -702,15 +702,15 @@ export default function MapPage() {
                       >
                         <div style={{ fontSize: '11px', color: '#999999' }}>
                           <div style={{ color: '#999999' }}>Rank</div>
-                          <div style={{ fontWeight: 700, color: '#ffffff' }}>{formatScore(item.rank_score)}</div>
+                          <div style={{ fontWeight: 700, color: '#1a1a1a' }}>{formatScore(item.rank_score)}</div>
                         </div>
                         <div style={{ fontSize: '11px', color: '#999999' }}>
                           <div style={{ color: '#999999' }}>Anomaly</div>
-                          <div style={{ fontWeight: 700, color: '#ffffff' }}>{formatScore(item.anomaly_score)}</div>
+                          <div style={{ fontWeight: 700, color: '#1a1a1a' }}>{formatScore(item.anomaly_score)}</div>
                         </div>
                         <div style={{ fontSize: '11px', color: '#999999' }}>
                           <div style={{ color: '#999999' }}>Confidence</div>
-                          <div style={{ fontWeight: 700, color: '#ffffff' }}>{formatScore(item.confidence_score)}</div>
+                          <div style={{ fontWeight: 700, color: '#1a1a1a' }}>{formatScore(item.confidence_score)}</div>
                         </div>
                       </div>
 
@@ -733,7 +733,7 @@ export default function MapPage() {
           <div style={{ display: 'grid', gap: '1rem' }}>
             <section
               style={{
-                backgroundColor: '#1a1a1a',
+                backgroundColor: '#ffffff',
                 border: '1px solid #e0e0e0',
                 borderRadius: '8px',
                 padding: '12px',
@@ -777,8 +777,8 @@ export default function MapPage() {
                       width: '100%',
                       borderRadius: '8px',
                       border: '1px solid #D94436',
-                      backgroundColor: '#1a1a1a',
-                      color: '#ffffff',
+                      backgroundColor: '#ffffff',
+                      color: '#1a1a1a',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -810,8 +810,8 @@ export default function MapPage() {
                       right: '1rem',
                       padding: '0.45rem 0.7rem',
                       borderRadius: '999px',
-                      backgroundColor: 'rgba(12, 12, 12, 0.92)',
-                      color: '#ffffff',
+                      backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                      color: '#1a1a1a',
                       fontSize: '0.82rem',
                       fontWeight: 700,
                       boxShadow: '0 8px 20px rgba(0, 0, 0, 0.28)',
@@ -825,7 +825,7 @@ export default function MapPage() {
 
             <section
               style={{
-                backgroundColor: '#1a1a1a',
+                backgroundColor: '#ffffff',
                 border: '1px solid #e0e0e0',
                 borderRadius: '8px',
                 padding: '12px',
@@ -898,7 +898,7 @@ export default function MapPage() {
                         <div style={{ fontSize: '0.78rem', color: '#999999', marginBottom: '0.22rem' }}>
                           {item.label}
                         </div>
-                        <div style={{ fontWeight: 700, color: '#ffffff' }}>{item.value}</div>
+                        <div style={{ fontWeight: 700, color: '#1a1a1a' }}>{item.value}</div>
                       </div>
                     ))}
                   </div>
@@ -921,7 +921,7 @@ export default function MapPage() {
                           padding: '8px',
                           borderRadius: '6px',
                           backgroundColor: '#f5f5f5',
-                          color: '#ffffff',
+                          color: '#1a1a1a',
                         }}
                       >
                         <div style={{ fontSize: '0.76rem', opacity: 0.72, marginBottom: '0.2rem' }}>
@@ -936,10 +936,10 @@ export default function MapPage() {
                     <div
                       style={{
                         padding: '10px',
-                        backgroundColor: '#1a1a1a',
+                        backgroundColor: '#ffffff',
                         border: '1px solid #D94436',
                         borderRadius: '6px',
-                        color: '#ffffff',
+                        color: '#1a1a1a',
                         fontSize: '0.92rem',
                       }}
                     >

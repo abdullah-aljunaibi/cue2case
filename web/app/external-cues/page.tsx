@@ -125,7 +125,7 @@ export default async function ExternalCuesPage() {
       style={{
         fontFamily: "'IBM Plex Mono', 'Courier New', monospace",
         backgroundColor: '#f5f5f5',
-        color: '#ffffff',
+        color: '#1a1a1a',
         minHeight: '100vh',
         padding: '2rem',
       }}
@@ -135,7 +135,7 @@ export default async function ExternalCuesPage() {
           style={{
             marginBottom: '1.5rem',
             padding: '1.5rem',
-            backgroundColor: '#1a1a1a',
+            backgroundColor: '#ffffff',
             border: '1px solid #e0e0e0',
             borderRadius: '8px',
             boxShadow: '0 8px 24px rgba(0, 0, 0, 0.08)',
@@ -166,7 +166,7 @@ export default async function ExternalCuesPage() {
             style={{
               marginBottom: '1.5rem',
               padding: '1rem 1.25rem',
-              backgroundColor: '#1a1a1a',
+              backgroundColor: '#ffffff',
               border: '1px solid #D94436',
               borderRadius: '6px',
               color: '#999999',
@@ -199,7 +199,7 @@ export default async function ExternalCuesPage() {
             <div
               key={metric.label}
               style={{
-                backgroundColor: '#1a1a1a',
+                backgroundColor: '#ffffff',
                 border: '1px solid #e0e0e0',
                 borderRadius: '6px',
                 padding: '1rem 1.25rem',
@@ -217,7 +217,7 @@ export default async function ExternalCuesPage() {
         {cues.length === 0 ? (
           <section
             style={{
-              backgroundColor: '#1a1a1a',
+              backgroundColor: '#ffffff',
               border: '1px dashed #e0e0e0',
               borderRadius: '8px',
               padding: '2rem',
@@ -240,7 +240,7 @@ export default async function ExternalCuesPage() {
                 <article
                   key={key}
                   style={{
-                    backgroundColor: '#1a1a1a',
+                    backgroundColor: '#ffffff',
                     border: '1px solid #e0e0e0',
                     borderRadius: '8px',
                     padding: '1.25rem',
@@ -276,7 +276,7 @@ export default async function ExternalCuesPage() {
                         </span>
                         <span style={{ color: '#999999', fontSize: '0.95rem' }}>{source}</span>
                       </div>
-                      <div style={{ marginTop: '0.55rem', color: '#ffffff', fontSize: '1rem', fontWeight: 700 }}>
+                      <div style={{ marginTop: '0.55rem', color: '#1a1a1a', fontSize: '1rem', fontWeight: 700 }}>
                         Observed {formatUtcDate(item.observed_at)}
                       </div>
                     </div>
@@ -330,7 +330,7 @@ export default async function ExternalCuesPage() {
                         <div style={{ fontSize: '0.8rem', color: '#999999', marginBottom: '0.3rem' }}>
                           {field.label}
                         </div>
-                        <div style={{ fontSize: '0.98rem', fontWeight: 700, color: '#ffffff' }}>
+                        <div style={{ fontSize: '0.98rem', fontWeight: 700, color: '#1a1a1a' }}>
                           {field.value}
                         </div>
                       </div>
