@@ -487,7 +487,7 @@ export default function MapPage() {
   return (
     <main
       style={{
-        fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+        fontFamily: "'IBM Plex Mono', 'Courier New', monospace",
         backgroundColor: '#0c0c0c',
         color: '#ffffff',
         minHeight: '100vh',
@@ -851,8 +851,9 @@ export default function MapPage() {
                       justifyContent: 'center',
                       borderRadius: '999px',
                       padding: '0.6rem 0.95rem',
-                      backgroundColor: '#D94436',
-                      color: '#ffffff',
+                      background: 'transparent',
+                      border: '1px solid #D94436',
+                      color: '#D94436',
                       fontSize: '12px',
                       fontWeight: 600,
                       textDecoration: 'none',
