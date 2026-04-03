@@ -298,6 +298,10 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
     try {
       setLoading(true);
       setLoadError('');
+      setCaseData(null);
+      setReplay(null);
+      setNotes([]);
+      setAudit([]);
 
       // Core case data — must succeed
       const casePayload = await fetchJson<CasePayload>(`${API}/cases/${encodeURIComponent(caseId)}`);
@@ -310,10 +314,11 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
         fetchJson<AuditItem[] | { audit?: AuditItem[] }>(`${API}/cases/${encodeURIComponent(caseId)}/audit`).catch(() => null),
       ]);
 
-      if (replayPayload) setReplay(replayPayload);
-      if (notesPayload) setNotes(Array.isArray(notesPayload) ? notesPayload : asArray((notesPayload as any).notes));
-      if (auditPayload) setAudit(Array.isArray(auditPayload) ? auditPayload : asArray((auditPayload as any).audit));
+      setReplay(replayPayload);
+      setNotes(notesPayload ? (Array.isArray(notesPayload) ? notesPayload : asArray((notesPayload as any).notes)) : []);
+      setAudit(auditPayload ? (Array.isArray(auditPayload) ? auditPayload : asArray((auditPayload as any).audit)) : []);
     } catch (error) {
+      setCaseData(null);
       setLoadError(error instanceof Error ? error.message : 'Failed to load case');
     } finally {
       setLoading(false);

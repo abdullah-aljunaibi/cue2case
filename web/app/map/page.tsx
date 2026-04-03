@@ -181,6 +181,8 @@ function getMarkerStyle(selected: boolean) {
 export default function MapPage() {
   const [cases, setCases] = useState<NormalizedMapCase[]>([]);
   const [casesError, setCasesError] = useState<string | null>(null);
+  const [mapError, setMapError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [trackError, setTrackError] = useState<string | null>(null);
   const [trackLoading, setTrackLoading] = useState(false);
@@ -197,6 +199,7 @@ export default function MapPage() {
 
     async function loadCases() {
       try {
+        setIsLoading(true);
         setCasesError(null);
         const response = await fetch(`${apiUrl}/map/cases`, { cache: 'no-store' });
 
@@ -222,6 +225,10 @@ export default function MapPage() {
 
         setCases([]);
         setCasesError(error instanceof Error ? error.message : 'Unknown error while loading map cases.');
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
       }
     }
 
@@ -236,12 +243,17 @@ export default function MapPage() {
     let cancelled = false;
 
     async function ensureMap() {
+      if (typeof window === 'undefined' || !window.L) {
+        setMapError('Map library failed to load');
+        return;
+      }
+
       if (!mapElementRef.current || mapRef.current) {
         return;
       }
 
-      const L = (window as any).L;
-      if (!L) { console.error('Leaflet not loaded from CDN'); return; }
+      setMapError(null);
+      const L = window.L;
 
       if (cancelled || !mapElementRef.current) {
         return;
@@ -555,7 +567,20 @@ export default function MapPage() {
             </div>
 
             <div style={{ display: 'grid', gap: '0.75rem', overflowY: 'auto', paddingRight: '0.25rem' }}>
-              {cases.length === 0 ? (
+              {isLoading ? (
+                <div
+                  style={{
+                    border: '1px dashed #1a2338',
+                    borderRadius: '6px',
+                    padding: '12px',
+                    textAlign: 'center',
+                    color: '#64748b',
+                    backgroundColor: '#0f1419',
+                  }}
+                >
+                  Loading map data...
+                </div>
+              ) : cases.length === 0 ? (
                 <div
                   style={{
                     border: '1px dashed #1a2338',
@@ -700,19 +725,40 @@ export default function MapPage() {
               </div>
 
               <div style={{ position: 'relative' }}>
-                <div
-                  ref={mapElementRef}
-                  style={{
-                    height: '68vh',
-                    minHeight: '520px',
-                    width: '100%',
-                    borderRadius: '8px',
-                    overflow: 'hidden',
-                    border: '1px solid #1a2338',
-                    backgroundColor: '#0f1419',
-                  }}
-                />
-                {trackLoading ? (
+                {mapError ? (
+                  <div
+                    style={{
+                      height: '68vh',
+                      minHeight: '520px',
+                      width: '100%',
+                      borderRadius: '8px',
+                      border: '1px solid #991b1b',
+                      backgroundColor: '#7f1d1d',
+                      color: '#fca5a5',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      textAlign: 'center',
+                      padding: '1rem',
+                    }}
+                  >
+                    {mapError}
+                  </div>
+                ) : (
+                  <div
+                    ref={mapElementRef}
+                    style={{
+                      height: '68vh',
+                      minHeight: '520px',
+                      width: '100%',
+                      borderRadius: '8px',
+                      overflow: 'hidden',
+                      border: '1px solid #1a2338',
+                      backgroundColor: '#0f1419',
+                    }}
+                  />
+                )}
+                {trackLoading && !mapError ? (
                   <div
                     style={{
                       position: 'absolute',
