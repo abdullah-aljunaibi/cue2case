@@ -365,7 +365,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
       const map = window.L.map(mapRef.current).setView(primaryCoords || [0, 0], primaryCoords ? 7 : 2);
       mapInstanceRef.current = map;
 
-      window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      window.L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
         attribution: '&copy; OpenStreetMap contributors',
       }).addTo(map);
 
@@ -1043,10 +1043,10 @@ function Badge({ label, color }: { label: string; color: string }) {
 function buttonStyle(kind: 'primary' | 'secondary' | 'danger'): React.CSSProperties {
   const palette =
     kind === 'danger'
-      ? { border: COLORS.red, text: '#1a1a1a', background: 'transparent' }
+      ? { border: COLORS.red, text: '#D94436', background: 'transparent' }
       : kind === 'secondary'
         ? { border: COLORS.purple, text: '#1a1a1a', background: 'transparent' }
-        : { border: COLORS.blue, text: '#1a1a1a', background: 'transparent' };
+        : { border: COLORS.blue, text: '#D94436', background: 'transparent' };
 
   return {
     padding: '10px 12px',
