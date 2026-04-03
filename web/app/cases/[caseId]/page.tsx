@@ -17,9 +17,9 @@ const COLORS = {
   text: '#ffffff',
   muted: '#a0a0a0',
   blue: '#D94436',
-  red: '#ef4444',
-  yellow: '#f59e0b',
-  green: '#4ade80',
+  red: '#D94436',
+  yellow: '#a0a0a0',
+  green: '#a0a0a0',
   purple: '#D94436',
 };
 
@@ -548,7 +548,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
         padding: '20px',
         fontSize: '13px',
         lineHeight: 1.45,
-        fontFamily: 'Inter, Arial, sans-serif',
+        fontFamily: "'IBM Plex Mono', 'Courier New', monospace",
       }}
     >
       <div style={{ maxWidth: '1600px', margin: '0 auto', display: 'grid', gap: '16px' }}>
@@ -817,7 +817,12 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                 <SectionCard title="Operator actions">
                   <div style={{ display: 'grid', gap: '10px' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px' }}>
-                      <button type="button" onClick={() => void runAction('acknowledge')} style={buttonStyle('primary')} disabled={actionState.loading}>
+                      <button
+                        type="button"
+                        onClick={() => void runAction('acknowledge')}
+                        style={{ ...buttonStyle('primary'), backgroundColor: '#D94436' }}
+                        disabled={actionState.loading}
+                      >
                         Acknowledge
                       </button>
                       <button type="button" onClick={() => void runAction('assign')} style={buttonStyle('primary')} disabled={actionState.loading}>
@@ -849,8 +854,8 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                         style={{
                           padding: '10px 12px',
                           borderRadius: '10px',
-                          border: `1px solid ${actionState.error ? 'rgba(217,68,54,0.4)' : 'rgba(74,222,128,0.4)'}`,
-                          background: actionState.error ? 'rgba(217,68,54,0.08)' : 'rgba(74,222,128,0.08)',
+                          border: `1px solid ${actionState.error ? 'rgba(217,68,54,0.4)' : 'rgba(160,160,160,0.4)'}`,
+                          background: actionState.error ? 'rgba(217,68,54,0.08)' : 'rgba(160,160,160,0.08)',
                           color: actionState.error ? '#ffffff' : '#ffffff',
                         }}
                       >
@@ -892,7 +897,12 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                       placeholder="Add analyst note"
                       style={{ ...inputStyle, minHeight: '96px', resize: 'vertical' }}
                     />
-                    <button type="button" onClick={() => void submitNote()} style={buttonStyle('primary')} disabled={noteState.loading}>
+                    <button
+                      type="button"
+                      onClick={() => void submitNote()}
+                      style={{ ...buttonStyle('primary'), backgroundColor: '#D94436' }}
+                      disabled={noteState.loading}
+                    >
                       Submit note
                     </button>
                     {noteState.message ? (
@@ -1033,10 +1043,10 @@ function Badge({ label, color }: { label: string; color: string }) {
 function buttonStyle(kind: 'primary' | 'secondary' | 'danger'): React.CSSProperties {
   const palette =
     kind === 'danger'
-      ? { border: COLORS.red, text: '#ffffff', background: 'rgba(217,68,54,0.12)' }
+      ? { border: COLORS.red, text: '#ffffff', background: 'transparent' }
       : kind === 'secondary'
-        ? { border: COLORS.purple, text: '#ffffff', background: 'rgba(217,68,54,0.12)' }
-        : { border: COLORS.blue, text: '#ffffff', background: 'rgba(217,68,54,0.12)' };
+        ? { border: COLORS.purple, text: '#ffffff', background: 'transparent' }
+        : { border: COLORS.blue, text: '#ffffff', background: 'transparent' };
 
   return {
     padding: '10px 12px',
