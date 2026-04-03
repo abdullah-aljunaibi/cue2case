@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import Link from 'next/link';
 
 export const metadata = {
   title: 'Cue2Case v3 — Maritime Operator Console',
@@ -10,6 +11,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en">
       <head>
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
       </head>
       <body style={{
         margin: 0,
@@ -33,9 +35,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <span style={{ fontWeight: 700, fontSize: '15px', color: '#60a5fa', letterSpacing: '0.5px' }}>
               CUE2CASE
             </span>
-            <a href="/" style={{ color: '#94a3b8', textDecoration: 'none' }}>Queue</a>
-            <a href="/map" style={{ color: '#94a3b8', textDecoration: 'none' }}>Map</a>
-            <a href="/external-cues" style={{ color: '#94a3b8', textDecoration: 'none' }}>Cues</a>
+            <Link href="/" style={{ color: '#94a3b8', textDecoration: 'none' }}>Queue</Link>
+            <Link href="/map" style={{ color: '#94a3b8', textDecoration: 'none' }}>Map</Link>
+            <Link href="/external-cues" style={{ color: '#94a3b8', textDecoration: 'none' }}>Cues</Link>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <span style={{ color: '#4ade80', fontSize: '11px' }}>● DUQM PROFILE ACTIVE</span>
