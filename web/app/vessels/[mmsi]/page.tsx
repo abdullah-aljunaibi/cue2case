@@ -52,7 +52,7 @@ type ExternalCueItem = {
   id?: string | number | null;
   cue_type?: string | null;
   source?: string | null;
-  description?: string | null;
+  data?: Record<string, unknown> | null;
 };
 
 type VesselStats = {
@@ -547,7 +547,7 @@ export default async function VesselDetailPage({ params }: { params: Promise<{ m
                           </span>
                           <span style={{ color: COLORS.secondary, fontSize: '12px' }}>{formatText(cue.source)}</span>
                         </div>
-                        <div style={{ color: COLORS.text, fontSize: '13px', lineHeight: 1.5 }}>{formatText(cue.description)}</div>
+                        <div style={{ color: COLORS.text, fontSize: '13px', lineHeight: 1.5 }}>{formatText(cue.data ? JSON.stringify(cue.data) : null)}</div>
                       </div>
                     ))
                   ) : (

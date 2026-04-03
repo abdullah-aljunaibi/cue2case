@@ -73,7 +73,7 @@ def _fetch_external_cues(case_id: str) -> List[Dict[str, Any]]:
         """
         SELECT id, source, cue_type, observed_at, data, created_at
         FROM external_cue
-        WHERE linked_case_id = %s
+        WHERE case_id = %s
         ORDER BY observed_at ASC NULLS LAST, created_at ASC, id ASC
         """,
         """
