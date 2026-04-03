@@ -1,6 +1,11 @@
 // Client-rendered Cue2Case map page for browsing mapped cases and vessel tracks.
 'use client';
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+declare global {
+  interface Window { L: any; __leafletFailed?: boolean; }
+}
+
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -270,7 +275,7 @@ export default function MapPage() {
 
       leafletRef.current = L;
 
-      const map = (L as any).map(mapElementRef.current, {
+      const map = L.map(mapElementRef.current, {
         center: [18, 54],
         zoom: 3,
         zoomControl: true,

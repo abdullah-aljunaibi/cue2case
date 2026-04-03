@@ -113,19 +113,7 @@ type ActionState = {
 };
 
 declare global {
-  interface Window {
-    L?: {
-      map: (element: HTMLElement) => LeafletMap;
-      tileLayer: (url: string, options?: Record<string, unknown>) => { addTo: (map: LeafletMap) => void };
-      geoJSON: (data: unknown, options?: Record<string, unknown>) => {
-        addTo: (map: LeafletMap) => void;
-        getBounds?: () => LeafletBounds;
-      };
-      marker: (latlng: [number, number]) => { addTo: (map: LeafletMap) => { bindPopup?: (text: string) => void } };
-      latLngBounds: (points: [number, number][]) => LeafletBounds;
-    };
-    __leafletFailed?: boolean;
-  }
+  interface Window { L: any; __leafletFailed?: boolean; }
 }
 
 type LeafletBounds = {
