@@ -85,28 +85,27 @@ async def get_vessel_detail(mmsi: str):
             status,
             anomaly_score,
             rank_score,
-            created_at
+            start_observed_at
         FROM investigation_case
         WHERE mmsi = %s
-        ORDER BY created_at DESC, id DESC
+        ORDER BY start_observed_at DESC NULLS LAST, id DESC
     """
     alerts_query = """
         SELECT
-            id,
             alert_type,
             severity,
-            title,
-            detected_at
+            observed_at,
+            explanation
         FROM alert
         WHERE mmsi = %s
-        ORDER BY detected_at DESC NULLS LAST, id DESC
+        ORDER BY observed_at DESC NULLS LAST
     """
     tracks_query = """
         SELECT
             id,
             start_time,
             end_time,
-            num_points
+            point_count
         FROM track_segment
         WHERE mmsi = %s
         ORDER BY start_time DESC NULLS LAST, id DESC
@@ -116,10 +115,10 @@ async def get_vessel_detail(mmsi: str):
             ec.id,
             ec.cue_type,
             ec.source,
-            ec.description,
+            ec.data,
             ec.created_at
         FROM external_cue ec
-        INNER JOIN investigation_case ic ON ic.id = ec.linked_case_id
+        INNER JOIN investigation_case ic ON ic.id = ec.case_id
         WHERE ic.mmsi = %s
         ORDER BY ec.created_at DESC, ec.id DESC
     """

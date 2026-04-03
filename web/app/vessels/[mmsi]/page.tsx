@@ -22,8 +22,8 @@ type VesselRecord = {
   mmsi?: string | number | null;
   type?: string | null;
   vessel_type?: string | null;
-  flag?: string | null;
-  imo?: string | number | null;
+  length?: number | null;
+  width?: number | null;
   first_seen?: string | null;
   last_seen?: string | null;
 };
@@ -34,18 +34,14 @@ type CaseItem = {
   status?: string | null;
   anomaly_score?: number | null;
   rank_score?: number | null;
-  created_at?: string | null;
+  start_observed_at?: string | null;
 };
 
 type AlertItem = {
-  id?: string | number | null;
-  type?: string | null;
   alert_type?: string | null;
-  severity?: string | number | null;
-  title?: string | null;
-  description?: string | null;
-  timestamp?: string | null;
-  created_at?: string | null;
+  severity?: number | null;
+  observed_at?: string | null;
+  explanation?: string | null;
 };
 
 type TrackItem = {
@@ -125,24 +121,17 @@ function labelize(value?: string | null) {
 }
 
 function getAlertType(alert: AlertItem) {
-  return alert.alert_type || alert.type || 'unknown';
+  return alert.alert_type || 'unknown';
 }
 
 function getAlertTimestamp(alert: AlertItem) {
-  return alert.timestamp || alert.created_at || null;
+  return alert.observed_at || null;
 }
 
 function getSeverityColor(severity?: string | number | null) {
-  const normalized = typeof severity === 'string' ? severity.toLowerCase() : String(severity ?? '').toLowerCase();
-
-  if (normalized.includes('high') || normalized.includes('critical') || normalized === '3') {
-    return COLORS.accent;
-  }
-
-  if (normalized.includes('medium') || normalized === '2') {
-    return '#ffffff';
-  }
-
+  const num = typeof severity === 'number' ? severity : parseFloat(String(severity ?? '0'));
+  if (num >= 0.8) return COLORS.accent;
+  if (num >= 0.5) return '#ffffff';
   return COLORS.secondary;
 }
 
@@ -268,8 +257,8 @@ export default async function VesselDetailPage({ params }: { params: Promise<{ m
             {[
               { label: 'MMSI', value: formatText(vessel?.mmsi ?? mmsi) },
               { label: 'Type', value: formatText(vessel?.type || vessel?.vessel_type) },
-              { label: 'Flag', value: formatText(vessel?.flag) },
-              { label: 'IMO', value: formatText(vessel?.imo) },
+              { label: 'Length', value: vessel?.length ? `${vessel.length}m` : '—' },
+              { label: 'Width', value: vessel?.width ? `${vessel.width}m` : '—' },
             ].map((item) => (
               <div
                 key={item.label}
@@ -442,7 +431,7 @@ export default async function VesselDetailPage({ params }: { params: Promise<{ m
                             <span style={{ color: COLORS.secondary }}>{labelize(item.status)}</span>
                             <span style={{ color: COLORS.text }}>{formatScore(item.anomaly_score)}</span>
                             <span style={{ color: COLORS.text }}>{formatScore(item.rank_score)}</span>
-                            <span style={{ color: COLORS.secondary }}>{formatDateTime(item.created_at)}</span>
+                            <span style={{ color: COLORS.secondary }}>{formatDateTime(item.start_observed_at)}</span>
                           </div>
                         </Link>
                       ) : (
@@ -462,7 +451,7 @@ export default async function VesselDetailPage({ params }: { params: Promise<{ m
                           <span style={{ color: COLORS.secondary }}>{labelize(item.status)}</span>
                           <span style={{ color: COLORS.text }}>{formatScore(item.anomaly_score)}</span>
                           <span style={{ color: COLORS.text }}>{formatScore(item.rank_score)}</span>
-                          <span style={{ color: COLORS.secondary }}>{formatDateTime(item.created_at)}</span>
+                          <span style={{ color: COLORS.secondary }}>{formatDateTime(item.start_observed_at)}</span>
                         </div>
                       );
                     })}
@@ -490,7 +479,7 @@ export default async function VesselDetailPage({ params }: { params: Promise<{ m
 
                   {sortedAlerts.length ? (
                     sortedAlerts.map((alert, index) => (
-                      <div key={String(alert.id ?? `${getAlertType(alert)}-${index}`)} style={{ display: 'grid', gridTemplateColumns: '24px 1fr', gap: '10px' }}>
+                      <div key={`${getAlertType(alert)}-${index}`} style={{ display: 'grid', gridTemplateColumns: '24px 1fr', gap: '10px' }}>
                         <div style={{ display: 'grid', justifyItems: 'center' }}>
                           <div style={{ width: '10px', height: '10px', borderRadius: '999px', background: COLORS.accent, marginTop: '6px' }} />
                           {index < sortedAlerts.length - 1 ? <div style={{ width: '1px', minHeight: '42px', background: COLORS.border }} /> : null}
@@ -517,7 +506,7 @@ export default async function VesselDetailPage({ params }: { params: Promise<{ m
                             </span>
                           </div>
                           <div style={{ color: COLORS.text, fontWeight: 700, marginBottom: '4px' }}>
-                            {formatText(alert.title || alert.description)}
+                            {formatText(alert.explanation)}
                           </div>
                           <div style={{ color: COLORS.secondary, fontSize: '12px' }}>{formatDateTime(getAlertTimestamp(alert))}</div>
                         </div>
