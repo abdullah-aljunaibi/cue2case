@@ -10,6 +10,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <head>
+        <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer crossOrigin="anonymous"></script>
         <script
@@ -21,9 +22,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body style={{
         margin: 0,
         padding: 0,
-        backgroundColor: '#0a0e17',
-        color: '#e0e6f0',
-        fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+        backgroundColor: '#0c0c0c',
+        color: '#ffffff',
+        fontFamily: "'IBM Plex Mono', 'Courier New', monospace",
         minHeight: '100vh',
       }}>
         <nav style={{
@@ -32,21 +33,21 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           justifyContent: 'space-between',
           padding: '0 20px',
           height: '48px',
-          backgroundColor: '#0d1220',
-          borderBottom: '1px solid #1a2338',
+          backgroundColor: '#0c0c0c',
+          borderBottom: '1px solid #1a1a1a',
           fontSize: '13px',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <span style={{ fontWeight: 700, fontSize: '15px', color: '#60a5fa', letterSpacing: '0.5px' }}>
+            <span style={{ fontWeight: 700, fontSize: '15px', color: '#D94436', letterSpacing: '0.5px' }}>
               CUE2CASE
             </span>
-            <Link href="/" style={{ color: '#94a3b8', textDecoration: 'none' }}>Queue</Link>
-            <Link href="/map" style={{ color: '#94a3b8', textDecoration: 'none' }}>Map</Link>
-            <Link href="/external-cues" style={{ color: '#94a3b8', textDecoration: 'none' }}>Cues</Link>
+            <Link href="/" style={{ color: '#a0a0a0', textDecoration: 'none' }}>Queue</Link>
+            <Link href="/map" style={{ color: '#a0a0a0', textDecoration: 'none' }}>Map</Link>
+            <Link href="/external-cues" style={{ color: '#a0a0a0', textDecoration: 'none' }}>Cues</Link>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <span style={{ color: '#4ade80', fontSize: '11px' }}>● DUQM PROFILE ACTIVE</span>
-            <span style={{ color: '#64748b', fontSize: '11px' }}>OPERATOR: ABDULLAH</span>
+            <span style={{ color: '#D94436', fontSize: '11px' }}>● DUQM PROFILE ACTIVE</span>
+            <span style={{ color: '#666666', fontSize: '11px' }}>OPERATOR: ABDULLAH</span>
           </div>
         </nav>
         <main style={{ padding: '16px 20px' }}>
