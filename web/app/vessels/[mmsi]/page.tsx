@@ -131,7 +131,7 @@ function getAlertTimestamp(alert: AlertItem) {
 function getSeverityColor(severity?: string | number | null) {
   const num = typeof severity === 'number' ? severity : parseFloat(String(severity ?? '0'));
   if (num >= 0.8) return COLORS.accent;
-  if (num >= 0.5) return '#ffffff';
+  if (num >= 0.5) return '#b45309';
   return COLORS.secondary;
 }
 

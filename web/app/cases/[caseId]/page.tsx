@@ -856,7 +856,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                           borderRadius: '10px',
                           border: `1px solid ${actionState.error ? 'rgba(217,68,54,0.4)' : 'rgba(160,160,160,0.4)'}`,
                           background: actionState.error ? 'rgba(217,68,54,0.08)' : 'rgba(160,160,160,0.08)',
-                          color: actionState.error ? '#ffffff' : '#ffffff',
+                          color: actionState.error ? '#D94436' : '#666666',
                         }}
                       >
                         {actionState.loading ? 'Working… ' : ''}

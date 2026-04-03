@@ -144,7 +144,7 @@ export default async function QueuePage(props: { searchParams?: Promise<SearchPa
                 fontSize: '12px',
                 fontWeight: 500,
                 textDecoration: 'none',
-                color: active ? '#ffffff' : '#999999',
+                color: active ? '#D94436' : '#999999',
                 backgroundColor: active ? '#f0f0f0' : 'transparent',
                 border: `1px solid ${active ? '#D94436' : '#e0e0e0'}`,
                 transition: 'all 0.15s',
