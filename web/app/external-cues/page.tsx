@@ -359,6 +359,8 @@ export default async function ExternalCuesPage() {
                           color: '#64748b',
                           fontSize: '0.78rem',
                           lineHeight: 1.45,
+                          maxHeight: '300px',
+                          overflow: 'auto',
                           overflowX: 'auto',
                         }}
                       >

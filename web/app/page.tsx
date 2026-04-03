@@ -65,25 +65,37 @@ export default async function QueuePage(props: { searchParams?: Promise<SearchPa
   const url = statusFilter
     ? `${apiUrl}/cases/?limit=100&status=${encodeURIComponent(statusFilter)}`
     : `${apiUrl}/cases/?limit=100`;
+  const countsUrl = `${apiUrl}/cases/?limit=100`;
 
   let cases: CaseItem[] = [];
+  let allCases: CaseItem[] = [];
   let error = '';
   try {
-    const res = await fetch(url, { cache: 'no-store' });
-    const data = await res.json();
+    const [res, countsRes] = await Promise.all([
+      fetch(url, { cache: 'no-store' }),
+      fetch(countsUrl, { cache: 'no-store' }),
+    ]);
+
+    if (!res.ok) {
+      throw new Error(`Failed to fetch cases (${res.status})`);
+    }
+
+    if (!countsRes.ok) {
+      throw new Error(`Failed to fetch case counts (${countsRes.status})`);
+    }
+
+    const [data, countsData] = await Promise.all([res.json(), countsRes.json()]);
     cases = Array.isArray(data) ? data : data.items || [];
+    allCases = Array.isArray(countsData) ? countsData : countsData.items || [];
   } catch (e: unknown) {
     error = e instanceof Error ? e.message : 'Failed to fetch cases';
   }
 
-  // When filtering by status, counts reflect the filtered set for the active tab
-  // but 'all' always shows total count from the response
-  const allCasesCount = cases.length;
   const counts = {
-    all: allCasesCount,
-    new: statusFilter ? (statusFilter === 'new' ? cases.length : 0) : cases.filter(c => c.status === 'new').length,
-    in_review: statusFilter ? (statusFilter === 'in_review' ? cases.length : 0) : cases.filter(c => c.status === 'in_review').length,
-    escalated: statusFilter ? (statusFilter === 'escalated' ? cases.length : 0) : cases.filter(c => c.status === 'escalated').length,
+    all: allCases.length,
+    new: allCases.filter(c => c.status === 'new').length,
+    in_review: allCases.filter(c => c.status === 'in_review').length,
+    escalated: allCases.filter(c => c.status === 'escalated').length,
   };
 
   const tabs = [
