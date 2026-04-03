@@ -85,7 +85,8 @@ async function getExternalCues() {
   }
 
   const payload = (await response.json()) as CuesResponse;
-  return asCues(payload);
+  const parsedCues = asCues(payload);
+  return Array.isArray(parsedCues) ? parsedCues : [];
 }
 
 export default async function ExternalCuesPage() {

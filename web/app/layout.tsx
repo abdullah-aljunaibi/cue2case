@@ -11,7 +11,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en">
       <head>
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer crossOrigin="anonymous"></script>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.__leafletFailed = false; setTimeout(function () { if (!window.L) { window.__leafletFailed = true; } }, 3000);`,
+          }}
+        />
       </head>
       <body style={{
         margin: 0,

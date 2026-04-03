@@ -85,8 +85,11 @@ export default async function QueuePage(props: { searchParams?: Promise<SearchPa
     }
 
     const [data, countsData] = await Promise.all([res.json(), countsRes.json()]);
-    cases = Array.isArray(data) ? data : data.items || [];
-    allCases = Array.isArray(countsData) ? countsData : countsData.items || [];
+    const parsedCases = Array.isArray(data) ? data : data?.items || [];
+    const parsedCounts = Array.isArray(countsData) ? countsData : countsData?.items || [];
+
+    cases = Array.isArray(parsedCases) ? parsedCases : [];
+    allCases = Array.isArray(parsedCounts) ? parsedCounts : [];
   } catch (e: unknown) {
     error = e instanceof Error ? e.message : 'Failed to fetch cases';
   }
@@ -182,7 +185,7 @@ export default async function QueuePage(props: { searchParams?: Promise<SearchPa
       </div>
 
       {/* Case rows */}
-      {cases.map((c) => {
+      {cases.filter((c) => c.id).map((c) => {
         const sev = getSeverity(c.rank_score);
         const st = getStatusStyle(c.status);
         const rankPct = Math.min(100, ((c.rank_score ?? 0) / 2) * 100);
