@@ -378,7 +378,7 @@ export default function MapPage() {
     if (bounds.isValid()) {
       map.fitBounds(bounds, { padding: [28, 28] });
     }
-  }, [cases]);
+  }, [cases, selectedKey]);
 
   useEffect(() => {
     for (const [key, marker] of markersRef.current.entries()) {
@@ -402,7 +402,7 @@ export default function MapPage() {
     trackLayerRef.current?.remove();
     trackLayerRef.current = null;
 
-    if (!selectedCase || selectedCase.mmsi === null || selectedCase.mmsi === undefined) {
+    if (!selectedCase || selectedCase.mmsi === null || selectedCase.mmsi === undefined || !selectedCase.hasCoordinates) {
       setTrackLoading(false);
       setTrackError(null);
       return;
@@ -483,6 +483,19 @@ export default function MapPage() {
   const markersWithCoordinates = cases.filter((item) => item.hasCoordinates);
   const missingCoordinatesCount = totalMarkers - markersWithCoordinates.length;
   const selectedCaseHref = selectedCase?.caseId !== null && selectedCase?.caseId !== undefined ? `/cases/${selectedCase.caseId}` : null;
+  const statusMessage = casesError
+    ? 'Map cases unavailable'
+    : isLoading
+      ? 'Loading map cases…'
+      : !selectedCase
+        ? 'Select a case to review movement'
+        : !selectedCase.hasCoordinates
+          ? 'Selected case has no coordinates yet'
+          : trackLoading
+            ? 'Loading vessel track…'
+            : trackError
+              ? trackError
+              : 'Track shown when available';
 
   return (
     <main
@@ -545,7 +558,7 @@ export default function MapPage() {
         <section
           style={{
             display: 'grid',
-            gridTemplateColumns: 'minmax(320px, 380px) minmax(0, 1fr)',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
             gap: '1.25rem',
             alignItems: 'start',
           }}
@@ -565,7 +578,7 @@ export default function MapPage() {
             <div>
               <h2 style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: 700 }}>Cases</h2>
               <p style={{ margin: 0, color: '#999999', fontSize: '11px' }}>
-                Select a case to center the map, review vessel movement, and continue into case handling.
+                Select a mapped case to center the map and review vessel movement. Unmapped cases stay in the list for follow-up.
               </p>
             </div>
 
@@ -598,16 +611,17 @@ export default function MapPage() {
 
             <div
               style={{
-                padding: '8px 10px',
+                padding: '10px',
                 borderRadius: '6px',
                 backgroundColor: '#f5f5f5',
-                border: '1px solid #e0e0e0',
-                color: '#999999',
-                fontSize: '0.9rem',
+                border: `1px solid ${trackError ? '#D94436' : '#e0e0e0'}`,
+                color: trackError ? '#D94436' : '#999999',
+                fontSize: '12px',
                 lineHeight: 1.5,
               }}
             >
-              Use the map to verify location context and vessel movement before opening the full case record.
+              <div style={{ fontWeight: 700, color: '#1a1a1a', marginBottom: '4px' }}>Map status</div>
+              <div>{statusMessage}</div>
             </div>
 
             <div style={{ display: 'grid', gap: '0.75rem', overflowY: 'auto', paddingRight: '0.25rem' }}>
@@ -641,6 +655,7 @@ export default function MapPage() {
                 cases.map((item, index) => {
                   const key = getCaseKey(item, index);
                   const selected = key === selectedKey;
+                  const canCenter = item.hasCoordinates;
 
                   return (
                     <button
@@ -657,6 +672,7 @@ export default function MapPage() {
                         color: '#1a1a1a',
                         cursor: 'pointer',
                         boxShadow: selected ? '0 0 0 1px rgba(217, 68, 54, 0.12)' : 'none',
+                        opacity: canCenter ? 1 : 0.78,
                       }}
                     >
                       <div
@@ -665,6 +681,7 @@ export default function MapPage() {
                           justifyContent: 'space-between',
                           gap: '0.75rem',
                           alignItems: 'flex-start',
+                          flexWrap: 'wrap',
                           marginBottom: '0.6rem',
                         }}
                       >
@@ -674,22 +691,42 @@ export default function MapPage() {
                           </div>
                           <div style={{ color: '#999999', fontSize: '11px' }}>{formatText(item.title)}</div>
                         </div>
-                        <span
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            borderRadius: '999px',
-                            padding: '0.24rem 0.55rem',
-                            fontSize: '0.75rem',
-                            fontWeight: 700,
-                            backgroundColor: selected ? '#f0f0f0' : '#f5f5f5',
-                            border: '1px solid #e0e0e0',
-                            color: '#999999',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {formatText(item.status)}
-                        </span>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                          {!canCenter ? (
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                borderRadius: '999px',
+                                padding: '0.24rem 0.55rem',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                backgroundColor: '#ffffff',
+                                border: '1px solid #e0e0e0',
+                                color: '#999999',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              No coordinates
+                            </span>
+                          ) : null}
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              borderRadius: '999px',
+                              padding: '0.24rem 0.55rem',
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              backgroundColor: selected ? '#f0f0f0' : '#f5f5f5',
+                              border: '1px solid #e0e0e0',
+                              color: '#999999',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {formatText(item.status)}
+                          </span>
+                        </div>
                       </div>
 
                       <div
@@ -717,10 +754,9 @@ export default function MapPage() {
                       <div style={{ color: '#999999', fontSize: '11px', lineHeight: 1.5 }}>
                         <div>MMSI: {item.mmsi ?? '—'}</div>
                         <div>
-                          Coordinates:{' '}
                           {item.hasCoordinates
-                            ? `${formatCoordinate(item.lon)}, ${formatCoordinate(item.lat)}`
-                            : 'Awaiting position fix'}
+                            ? `Lat/Lon: ${formatCoordinate(item.lat)}, ${formatCoordinate(item.lon)}`
+                            : 'No coordinates yet — selecting this case will not center the map.'}
                         </div>
                       </div>
                     </button>
@@ -756,15 +792,7 @@ export default function MapPage() {
                 </div>
                 <div style={{ color: '#999999', fontSize: '11px', textAlign: 'right' }}>
                   <div>Selected: {selectedCase ? getCaseLabel(selectedCase) : 'No case selected'}</div>
-                  <div>
-                    {trackLoading
-                      ? 'Loading vessel track…'
-                      : trackError
-                        ? 'Track unavailable'
-                        : selectedCase
-                          ? 'Track shown when available'
-                          : 'Select a case to review movement'}
-                  </div>
+                  <div>{statusMessage}</div>
                 </div>
               </div>
 
@@ -773,7 +801,7 @@ export default function MapPage() {
                   <div
                     style={{
                       height: '68vh',
-                      minHeight: '520px',
+                      minHeight: '420px',
                       width: '100%',
                       borderRadius: '8px',
                       border: '1px solid #D94436',
@@ -793,7 +821,7 @@ export default function MapPage() {
                     ref={mapElementRef}
                     style={{
                       height: '68vh',
-                      minHeight: '520px',
+                      minHeight: '420px',
                       width: '100%',
                       borderRadius: '8px',
                       overflow: 'hidden',
@@ -802,24 +830,6 @@ export default function MapPage() {
                     }}
                   />
                 )}
-                {trackLoading && !mapError ? (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: '1rem',
-                      right: '1rem',
-                      padding: '0.45rem 0.7rem',
-                      borderRadius: '999px',
-                      backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                      color: '#1a1a1a',
-                      fontSize: '0.82rem',
-                      fontWeight: 700,
-                      boxShadow: '0 8px 20px rgba(0, 0, 0, 0.28)',
-                    }}
-                  >
-                    Loading track…
-                  </div>
-                ) : null}
               </div>
             </section>
 
@@ -880,9 +890,9 @@ export default function MapPage() {
                       { label: 'Priority', value: String(selectedCase.priority ?? '—') },
                       { label: 'MMSI', value: String(selectedCase.mmsi ?? '—') },
                       {
-                        label: 'Coordinates',
+                        label: 'Lat/Lon',
                         value: selectedCase.hasCoordinates
-                          ? `${formatCoordinate(selectedCase.lon)}, ${formatCoordinate(selectedCase.lat)}`
+                          ? `${formatCoordinate(selectedCase.lat)}, ${formatCoordinate(selectedCase.lon)}`
                           : 'Awaiting position fix',
                       },
                     ].map((item) => (

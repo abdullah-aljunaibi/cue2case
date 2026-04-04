@@ -31,13 +31,14 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '0 20px',
-          height: '48px',
+          flexWrap: 'wrap',
+          gap: '10px 16px',
+          padding: '12px 20px',
           backgroundColor: '#f5f5f5',
           borderBottom: '1px solid #e0e0e0',
           fontSize: '13px',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '10px 16px' }}>
             <span style={{ fontWeight: 700, fontSize: '15px', color: '#D94436', letterSpacing: '0.5px' }}>
               CUE2CASE
             </span>
@@ -45,7 +46,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <Link href="/map" style={{ color: '#999999', textDecoration: 'none' }}>Map</Link>
             <Link href="/external-cues" style={{ color: '#999999', textDecoration: 'none' }}>Cues</Link>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px 12px' }}>
             <span style={{ color: '#D94436', fontSize: '11px' }}>● DUQM PROFILE ACTIVE</span>
             <span style={{ color: '#999999', fontSize: '11px' }}>OPERATOR: ABDULLAH</span>
           </div>

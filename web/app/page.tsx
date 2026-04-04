@@ -52,11 +52,8 @@ function formatTime(value?: string | null) {
   return d.toISOString().slice(11, 16) + ' UTC';
 }
 
-function formatDate(value?: string | null) {
-  if (!value) return '—';
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return '—';
-  return d.toISOString().slice(0, 10);
+function formatActiveFilterLabel(status: string) {
+  return status.replace('_', ' ');
 }
 
 export default async function QueuePage(props: { searchParams?: Promise<SearchParams> }) {
@@ -121,7 +118,7 @@ export default async function QueuePage(props: { searchParams?: Promise<SearchPa
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
         <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: '#1a1a1a' }}>
           Case Queue
         </h1>
@@ -130,8 +127,7 @@ export default async function QueuePage(props: { searchParams?: Promise<SearchPa
         </span>
       </div>
 
-      {/* Status filter tabs */}
-      <div style={{ display: 'flex', gap: '4px', marginBottom: '16px' }}>
+      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '16px' }}>
         {tabs.map(tab => {
           const active = statusFilter === tab.key;
           return (
@@ -162,106 +158,129 @@ export default async function QueuePage(props: { searchParams?: Promise<SearchPa
         </div>
       )}
 
-      {/* Table header */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 100px 80px 90px 80px 60px 90px',
-        gap: '8px',
-        padding: '8px 12px',
-        fontSize: '11px',
-        color: '#999999',
-        fontWeight: 600,
-        textTransform: 'uppercase' as const,
-        letterSpacing: '0.5px',
-        borderBottom: '1px solid #e0e0e0',
-      }}>
-        <span>Case / Vessel</span>
-        <span>Severity</span>
-        <span>Rank</span>
-        <span>Status</span>
-        <span>Evidence</span>
-        <span>Time</span>
-        <span>Action</span>
+      <div style={{ overflowX: 'auto', borderRadius: '8px' }}>
+        <div style={{ minWidth: '760px' }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(260px, 1.4fr) 100px 80px 100px 80px 80px',
+            gap: '8px',
+            padding: '8px 12px',
+            fontSize: '11px',
+            color: '#999999',
+            fontWeight: 600,
+            textTransform: 'uppercase' as const,
+            letterSpacing: '0.5px',
+            borderBottom: '1px solid #e0e0e0',
+          }}>
+            <span>Case / Vessel</span>
+            <span>Severity</span>
+            <span>Rank</span>
+            <span>Status</span>
+            <span>Evidence</span>
+            <span>Time</span>
+          </div>
+
+          {cases.filter((c) => c.id).map((c) => {
+            const sev = getSeverity(c.rank_score);
+            const st = getStatusStyle(c.status);
+            const rankPct = Math.min(100, ((c.rank_score ?? 0) / 2) * 100);
+
+            return (
+              <Link
+                key={c.id}
+                href={`/cases/${c.id}`}
+                style={{ textDecoration: 'none', color: 'inherit' }}
+              >
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'minmax(260px, 1.4fr) 100px 80px 100px 80px 80px',
+                  gap: '8px',
+                  padding: '10px 12px',
+                  borderBottom: '1px solid #e0e0e0',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.1s',
+                  alignItems: 'center',
+                }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '2px' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a' }}>
+                        {c.title || 'Untitled Case'}
+                      </div>
+                      <span style={{ fontSize: '10px', color: '#D94436', border: '1px solid #e0e0e0', borderRadius: '999px', padding: '2px 6px' }}>
+                        Open case
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#999999' }}>
+                      {c.vessel_name || 'Unknown'} • MMSI {c.mmsi || '—'}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span style={badge(sev.label, sev.color, sev.bg)}>{sev.label}</span>
+                  </div>
+
+                  <div>
+                    <div style={{ fontSize: '12px', fontWeight: 600, color: sev.color, marginBottom: '2px' }}>
+                      {(c.rank_score ?? 0).toFixed(2)}
+                    </div>
+                    <div style={{ height: '3px', backgroundColor: '#e0e0e0', borderRadius: '2px', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${rankPct}%`, backgroundColor: sev.color, borderRadius: '2px' }} />
+                    </div>
+                  </div>
+
+                  <div>
+                    <span style={badge((c.status || 'new').replace('_', ' ').toUpperCase(), st.color, st.bg)}>
+                      {(c.status || 'new').replace('_', ' ').toUpperCase()}
+                    </span>
+                  </div>
+
+                  <div style={{ fontSize: '12px', color: '#999999', textAlign: 'center' }}>
+                    {c.evidence_count ?? 0}
+                  </div>
+
+                  <div style={{ fontSize: '11px', color: '#999999' }}>
+                    {formatTime(c.start_observed_at)}
+                  </div>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Case rows */}
-      {cases.filter((c) => c.id).map((c) => {
-        const sev = getSeverity(c.rank_score);
-        const st = getStatusStyle(c.status);
-        const rankPct = Math.min(100, ((c.rank_score ?? 0) / 2) * 100);
-
-        return (
-          <Link
-            key={c.id}
-            href={`/cases/${c.id}`}
-            style={{ textDecoration: 'none', color: 'inherit' }}
-          >
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 100px 80px 90px 80px 60px 90px',
-              gap: '8px',
-              padding: '10px 12px',
-              borderBottom: '1px solid #e0e0e0',
-              cursor: 'pointer',
-              transition: 'background-color 0.1s',
-              alignItems: 'center',
-            }}
-              onMouseEnter={undefined}
-            >
-              {/* Case / Vessel */}
-              <div>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a', marginBottom: '2px' }}>
-                  {c.title || 'Untitled Case'}
-                </div>
-                <div style={{ fontSize: '11px', color: '#999999' }}>
-                  {c.vessel_name || 'Unknown'} • MMSI {c.mmsi || '—'}
-                </div>
-              </div>
-
-              {/* Severity */}
-              <div>
-                <span style={badge(sev.label, sev.color, sev.bg)}>{sev.label}</span>
-              </div>
-
-              {/* Rank bar */}
-              <div>
-                <div style={{ fontSize: '12px', fontWeight: 600, color: sev.color, marginBottom: '2px' }}>
-                  {(c.rank_score ?? 0).toFixed(2)}
-                </div>
-                <div style={{ height: '3px', backgroundColor: '#e0e0e0', borderRadius: '2px', overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${rankPct}%`, backgroundColor: sev.color, borderRadius: '2px' }} />
-                </div>
-              </div>
-
-              {/* Status */}
-              <div>
-                <span style={badge((c.status || 'new').replace('_', ' ').toUpperCase(), st.color, st.bg)}>
-                  {(c.status || 'new').replace('_', ' ').toUpperCase()}
-                </span>
-              </div>
-
-              {/* Evidence */}
-              <div style={{ fontSize: '12px', color: '#999999', textAlign: 'center' }}>
-                {c.evidence_count ?? 0}
-              </div>
-
-              {/* Time */}
-              <div style={{ fontSize: '11px', color: '#999999' }}>
-                {formatTime(c.start_observed_at)}
-              </div>
-
-              {/* Action hint */}
-              <div style={{ fontSize: '11px', color: '#D94436' }}>
-                Open →
-              </div>
-            </div>
-          </Link>
-        );
-      })}
-
       {cases.length === 0 && !error && (
-        <div style={{ textAlign: 'center', padding: '40px', color: '#999999', fontSize: '14px' }}>
-          No cases found{statusFilter ? ` with status "${statusFilter}"` : ''}.
+        <div style={{
+          textAlign: 'center',
+          padding: '40px',
+          color: '#999999',
+          fontSize: '14px',
+          border: '1px dashed #e0e0e0',
+          borderRadius: '8px',
+          marginTop: '16px',
+          backgroundColor: '#fafafa',
+        }}>
+          <div style={{ marginBottom: statusFilter ? '12px' : 0 }}>
+            No cases found{statusFilter ? ` with status "${formatActiveFilterLabel(statusFilter)}"` : ''}.
+          </div>
+          {statusFilter ? (
+            <Link
+              href="/"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '8px 12px',
+                borderRadius: '6px',
+                border: '1px solid #D94436',
+                color: '#D94436',
+                textDecoration: 'none',
+                fontSize: '12px',
+                fontWeight: 600,
+              }}
+            >
+              Clear filter
+            </Link>
+          ) : null}
         </div>
       )}
     </div>
