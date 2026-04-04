@@ -264,6 +264,60 @@ def _build_benign_context(vessel_type: Optional[int], cues: List[Dict[str, Any]]
     return None
 
 
+def build_score_breakdown(
+    case_row: Dict[str, Any],
+    alerts: List[Dict[str, Any]],
+    cues: Optional[List[Dict[str, Any]]] = None,
+    *,
+    evaluated_at: Optional[datetime] = None,
+) -> Dict[str, Any]:
+    """Build an explainable score payload from already-loaded case inputs."""
+    cues = cues or []
+    evaluated_at = evaluated_at or datetime.now(timezone.utc)
+
+    zone_label, zone_criticality = _extract_zone_context(alerts)
+    behavior_severity = _compute_behavior_severity(alerts)
+    cue_corroboration = _compute_cue_corroboration(cues)
+    identity_risk = _compute_identity_risk(case_row.get("vessel_type"), cues)
+    freshness_reference = case_row.get("updated_at") or case_row.get("end_observed_at") or case_row.get("created_at")
+    freshness = _compute_freshness(freshness_reference or evaluated_at)
+    uncertainty_penalty, missing_evidence = _compute_uncertainty_penalty(case_row, alerts, cues)
+
+    weighted_components = {
+        "behavior_severity": _round(behavior_severity * 0.6),
+        "zone_criticality": _round(zone_criticality * 0.35),
+        "cue_corroboration": _round(cue_corroboration * 0.5),
+        "identity_risk": _round(identity_risk * 0.35),
+        "freshness": _round(freshness * 0.2),
+        "uncertainty_penalty": _round(uncertainty_penalty),
+    }
+    base_rank = sum(weighted_components.values()) + (float(case_row.get("anomaly_score") or 0.0) * 0.35) + (float(case_row.get("confidence_score") or 0.0) * 0.15)
+    rank_score = _round(_clamp(base_rank, 0.0, 2.0))
+
+    breakdown = {
+        "rank_score": rank_score,
+        "components": weighted_components,
+        "why_now": _build_why_now(case_row, alerts, cues, zone_label),
+        "top_reasons": _top_reasons(weighted_components),
+        "confidence_explainer": _confidence_explainer(case_row, len(alerts), len(cues), len(missing_evidence)),
+        "benign_context": _build_benign_context(case_row.get("vessel_type"), cues, case_row),
+        "missing_evidence": missing_evidence,
+        "inputs": {
+            "case_id": str(case_row.get("id")) if case_row.get("id") is not None else None,
+            "mmsi": case_row.get("mmsi"),
+            "vessel_name": case_row.get("vessel_name"),
+            "vessel_type": case_row.get("vessel_type"),
+            "zone_context": zone_label,
+            "alert_count": len(alerts),
+            "cue_count": len(cues),
+            "anomaly_score": _round(float(case_row.get("anomaly_score") or 0.0)),
+            "confidence_score": _round(float(case_row.get("confidence_score") or 0.0)),
+            "evaluated_at": _iso(evaluated_at),
+        },
+    }
+    return breakdown
+
+
 def compute_score_breakdown(case_id: str, conn: Optional[Any] = None) -> Dict[str, Any]:
     """Compute explainable score breakdown for a case."""
     owns_connection = conn is None
@@ -332,50 +386,7 @@ def compute_score_breakdown(case_id: str, conn: Optional[Any] = None) -> Dict[st
             )
             cues = [dict(row) for row in cur.fetchall()]
 
-        zone_label, zone_criticality = _extract_zone_context(alerts)
-        behavior_severity = _compute_behavior_severity(alerts)
-        cue_corroboration = _compute_cue_corroboration(cues)
-        identity_risk = _compute_identity_risk(case_row.get("vessel_type"), cues)
-        freshness_reference = case_row.get("updated_at") or case_row.get("end_observed_at") or case_row.get("created_at")
-        freshness = _compute_freshness(freshness_reference)
-        uncertainty_penalty, missing_evidence = _compute_uncertainty_penalty(case_row, alerts, cues)
-
-        weighted_components = {
-            "behavior_severity": _round(behavior_severity * 0.6),
-            "zone_criticality": _round(zone_criticality * 0.35),
-            "cue_corroboration": _round(cue_corroboration * 0.5),
-            "identity_risk": _round(identity_risk * 0.35),
-            "freshness": _round(freshness * 0.2),
-            "uncertainty_penalty": _round(uncertainty_penalty),
-        }
-        base_rank = sum(weighted_components.values()) + (float(case_row.get("anomaly_score") or 0.0) * 0.35) + (float(case_row.get("confidence_score") or 0.0) * 0.15)
-        rank_score = _round(_clamp(base_rank, 0.0, 2.0))
-
-        why_now = _build_why_now(case_row, alerts, cues, zone_label)
-        benign_context = _build_benign_context(case_row.get("vessel_type"), cues, case_row)
-
-        breakdown = {
-            "rank_score": rank_score,
-            "components": weighted_components,
-            "why_now": why_now,
-            "top_reasons": _top_reasons(weighted_components),
-            "confidence_explainer": _confidence_explainer(case_row, len(alerts), len(cues), len(missing_evidence)),
-            "benign_context": benign_context,
-            "missing_evidence": missing_evidence,
-            "inputs": {
-                "case_id": str(case_row["id"]),
-                "mmsi": case_row.get("mmsi"),
-                "vessel_name": case_row.get("vessel_name"),
-                "vessel_type": case_row.get("vessel_type"),
-                "zone_context": zone_label,
-                "alert_count": len(alerts),
-                "cue_count": len(cues),
-                "anomaly_score": _round(float(case_row.get("anomaly_score") or 0.0)),
-                "confidence_score": _round(float(case_row.get("confidence_score") or 0.0)),
-                "evaluated_at": _iso(datetime.now(timezone.utc)),
-            },
-        }
-        return breakdown
+        return build_score_breakdown(case_row, alerts, cues)
     finally:
         if owns_connection:
             conn.close()
