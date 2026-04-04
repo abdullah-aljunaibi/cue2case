@@ -3,10 +3,12 @@
 import json
 import os
 from collections import defaultdict
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 import psycopg2
 from psycopg2.extras import Json, execute_values
+
+from app.services.scoring import build_score_breakdown
 
 DATABASE_URL = os.environ.get(
     "DATABASE_URL_SYNC",
@@ -280,20 +282,6 @@ def score_incident(alerts_list):
     }
 
 
-def compute_rank_score(anomaly_score, confidence_score, corroboration_bonus):
-    """Compute the capped trust-oriented rank score for a case."""
-    cue_linkage_bonus = 0.0
-    recency_decay = 0.0
-    rank_score = (
-        anomaly_score
-        + (confidence_score * 0.3)
-        + (corroboration_bonus * 0.5)
-        + cue_linkage_bonus
-        + recency_decay
-    )
-    return round(min(rank_score, 2.0), 4)
-
-
 def build_case_record(mmsi, incident_index, alerts_list, vessel_info):
     """Build a case payload and evidence rows for a single incident."""
     incident_alerts = sorted(alerts_list, key=lambda alert: (alert["observed_at"], alert["id"]))
@@ -313,11 +301,6 @@ def build_case_record(mmsi, incident_index, alerts_list, vessel_info):
     primary_alert = max(
         incident_alerts,
         key=lambda alert: (float(alert["severity"]), alert["observed_at"], alert["id"]),
-    )
-    rank_score = compute_rank_score(
-        scores["anomaly_score"],
-        scores["confidence_score"],
-        scores["corroboration_bonus"],
     )
 
     title = (
@@ -365,6 +348,38 @@ def build_case_record(mmsi, incident_index, alerts_list, vessel_info):
         summary_lines.append("Geofence context present in incident evidence.")
     summary = " ".join(summary_lines)
 
+    recommended_action = build_recommendation(
+        scores["alert_counts"],
+        scores["max_severity_by_type"],
+    )
+    evaluated_at = datetime.now(timezone.utc)
+    scoring_case_row = {
+        "id": None,
+        "mmsi": mmsi,
+        "title": title,
+        "anomaly_score": scores["anomaly_score"],
+        "confidence_score": scores["confidence_score"],
+        "status": "new",
+        "priority": priority_for_score(scores["anomaly_score"]),
+        "summary": summary,
+        "recommended_action": recommended_action,
+        "assigned_to": None,
+        "start_observed_at": incident_start,
+        "end_observed_at": incident_end,
+        "created_at": evaluated_at,
+        "updated_at": evaluated_at,
+        "primary_lon": primary_alert["lon"],
+        "primary_lat": primary_alert["lat"],
+        "vessel_name": vessel_name,
+        "vessel_type": vessel_type,
+    }
+    score_breakdown = build_score_breakdown(
+        scoring_case_row,
+        incident_alerts,
+        cues=[],
+        evaluated_at=evaluated_at,
+    )
+
     evidence_rows = []
     for order_index, alert in enumerate(incident_alerts, start=1):
         evidence_rows.append(
@@ -399,14 +414,11 @@ def build_case_record(mmsi, incident_index, alerts_list, vessel_info):
         "title": title,
         "anomaly_score": scores["anomaly_score"],
         "confidence_score": scores["confidence_score"],
-        "status": "new",
-        "assigned_to": None,
-        "priority": priority_for_score(scores["anomaly_score"]),
+        "status": scoring_case_row["status"],
+        "assigned_to": scoring_case_row["assigned_to"],
+        "priority": scoring_case_row["priority"],
         "summary": summary,
-        "recommended_action": build_recommendation(
-            scores["alert_counts"],
-            scores["max_severity_by_type"],
-        ),
+        "recommended_action": recommended_action,
         "evidence_rows": evidence_rows,
         "incident_start": incident_start,
         "incident_end": incident_end,
@@ -414,7 +426,8 @@ def build_case_record(mmsi, incident_index, alerts_list, vessel_info):
         "end_observed_at": incident_end,
         "primary_lon": primary_alert["lon"],
         "primary_lat": primary_alert["lat"],
-        "rank_score": rank_score,
+        "rank_score": score_breakdown["rank_score"],
+        "score_breakdown": score_breakdown,
         "signature": case_signature(mmsi, scores["alert_counts"].keys(), incident_start),
     }
 
@@ -493,6 +506,7 @@ def build_cases():
                 start_observed_at,
             )
             preserved_cases_by_signature[signature] = {
+                "case_id": case_id,
                 "status": status,
                 "assigned_to": assigned_to,
                 "notes": existing_notes_by_case_id.get(case_id, []),
@@ -565,6 +579,7 @@ def build_cases():
 
         case_records.sort(
             key=lambda record: (
+                -record["rank_score"],
                 -record["anomaly_score"],
                 -record["confidence_score"],
                 str(record["mmsi"]),
@@ -573,9 +588,12 @@ def build_cases():
         )
 
         for case_record in case_records:
+            preserved_case = preserved_cases_by_signature.get(case_record["signature"])
+            preserved_case_id = preserved_case["case_id"] if preserved_case is not None else None
             cur.execute(
                 """
                 INSERT INTO investigation_case (
+                    id,
                     title,
                     mmsi,
                     anomaly_score,
@@ -588,10 +606,12 @@ def build_cases():
                     start_observed_at,
                     end_observed_at,
                     rank_score,
+                    score_breakdown,
                     assigned_to,
                     run_id
                 )
                 VALUES (
+                    COALESCE(%s, uuid_generate_v4()),
                     %s,
                     %s,
                     %s,
@@ -605,11 +625,13 @@ def build_cases():
                     %s,
                     %s,
                     %s,
+                    %s,
                     %s
                 )
                 RETURNING id
                 """,
                 (
+                    preserved_case_id,
                     case_record["title"],
                     case_record["mmsi"],
                     case_record["anomaly_score"],
@@ -623,6 +645,7 @@ def build_cases():
                     case_record["start_observed_at"],
                     case_record["end_observed_at"],
                     case_record["rank_score"],
+                    Json(case_record["score_breakdown"]),
                     case_record["assigned_to"],
                     run_id,
                 ),
@@ -630,7 +653,6 @@ def build_cases():
             case_id = cur.fetchone()[0]
             cases_created += 1
 
-            preserved_case = preserved_cases_by_signature.get(case_record["signature"])
             if preserved_case and preserved_case["notes"]:
                 execute_values(
                     cur,
@@ -729,6 +751,7 @@ def build_cases():
                     anomaly_score,
                     priority,
                     confidence_score,
+                    rank_score,
                     (
                         SELECT COUNT(*)
                         FROM case_evidence
@@ -737,7 +760,7 @@ def build_cases():
                     id
                 FROM investigation_case
             ) ranked_cases
-            ORDER BY anomaly_score DESC, id ASC
+            ORDER BY rank_score DESC, anomaly_score DESC, id ASC
             LIMIT 10
             """
         )
