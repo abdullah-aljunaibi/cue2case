@@ -167,6 +167,15 @@ def detect_ais_silence():
                 if distance_nm < 0.5:
                     reasons_benign.append(f"minimal movement ({distance_nm:.2f} nm)")
 
+                # Ensure dual reasoning is always present for analyst trust
+                if not reasons_suspicious:
+                    reasons_suspicious.append(f"AIS gap of {gap_minutes:.0f} minutes warrants review")
+                if not reasons_benign:
+                    if distance_nm < 1.0:
+                        reasons_benign.append("minimal displacement suggests equipment issue or port-side gap")
+                    else:
+                        reasons_benign.append("gap may reflect transit through coverage dead zone")
+
                 episode = {
                     'start': prev[1],
                     'end': curr[1],
