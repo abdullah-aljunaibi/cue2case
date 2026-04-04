@@ -477,28 +477,28 @@ async def create_external_cue(payload: Dict[str, Any] = Body(...)):
 async def import_sample_external_cues():
     sample_cues = [
         {
-            "source": "demo-imagery-feed",
+            "source": "duqm-coastal-radar",
             "cue_type": "imagery",
-            "observed_at": "2026-03-31T18:45:00Z",
-            "lon": -118.1937,
-            "lat": 33.7701,
-            "data": {"confidence": 0.81, "note": "Small contact near port approach"},
+            "observed_at": "2026-04-03T06:30:00Z",
+            "lon": 57.72,
+            "lat": 19.68,
+            "data": {"confidence": 0.81, "note": "Unidentified contact near Duqm approach corridor"},
         },
         {
-            "source": "demo-tipline",
+            "source": "oman-coast-guard-tipline",
             "cue_type": "tip",
-            "observed_at": "2026-03-31T19:05:00Z",
-            "lon": -118.1753,
-            "lat": 33.7552,
-            "data": {"reporter": "anonymous", "note": "Unusual nighttime transfer activity"},
+            "observed_at": "2026-04-03T08:15:00Z",
+            "lon": 57.75,
+            "lat": 19.60,
+            "data": {"reporter": "anonymous", "note": "Vessel observed drifting without AIS near Ras Markaz"},
         },
         {
-            "source": "demo-rf-sensor",
+            "source": "duqm-vts-rf-sensor",
             "cue_type": "rf_detection",
-            "observed_at": "2026-03-31T19:20:00Z",
-            "lon": -118.2141,
-            "lat": 33.7824,
-            "data": {"band": "VHF", "signal_strength": -61.4},
+            "observed_at": "2026-04-03T09:00:00Z",
+            "lon": 57.69,
+            "lat": 19.72,
+            "data": {"frequency_mhz": 156.8, "note": "VHF transmission from vessel not broadcasting AIS"},
         },
     ]
 
