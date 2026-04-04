@@ -26,6 +26,11 @@ type CaseItem = {
 
 type SearchParams = { status?: string; sort?: string };
 
+type LiveRefreshResult = {
+  triggered?: boolean;
+  seconds_until_next?: number;
+};
+
 function getSeverity(rank: number | null | undefined): { label: string; color: string; bg: string } {
   const r = rank ?? 0;
   if (r >= 1.4) return { label: 'CRITICAL', color: '#991b1b', bg: '#fef2f2' };
@@ -56,6 +61,14 @@ function formatActiveFilterLabel(status: string) {
   return status.replace('_', ' ');
 }
 
+function getLiveRefreshLabel(result: LiveRefreshResult | null, unavailable: boolean) {
+  if (unavailable) return 'Live refresh unavailable';
+  if (!result) return null;
+  if (result.triggered) return 'Live refresh triggered';
+  const seconds = Math.max(0, Math.round(result.seconds_until_next ?? 0));
+  return `Live data cached • next refresh in ~${seconds}s`;
+}
+
 export default async function QueuePage(props: { searchParams?: Promise<SearchParams> }) {
   const searchParams = props.searchParams ? await props.searchParams : {};
   const statusFilter = searchParams?.status || '';
@@ -67,7 +80,25 @@ export default async function QueuePage(props: { searchParams?: Promise<SearchPa
   let cases: CaseItem[] = [];
   let allCases: CaseItem[] = [];
   let error = '';
+  let liveRefresh: LiveRefreshResult | null = null;
+  let liveRefreshUnavailable = false;
+
   try {
+    try {
+      const refreshRes = await fetch(`${apiUrl}/live/refresh`, {
+        method: 'POST',
+        cache: 'no-store',
+      });
+
+      if (refreshRes.ok) {
+        liveRefresh = await refreshRes.json();
+      } else {
+        liveRefreshUnavailable = true;
+      }
+    } catch {
+      liveRefreshUnavailable = true;
+    }
+
     const [res, countsRes] = await Promise.all([
       fetch(url, { cache: 'no-store' }),
       fetch(countsUrl, { cache: 'no-store' }),
@@ -116,12 +147,21 @@ export default async function QueuePage(props: { searchParams?: Promise<SearchPa
     letterSpacing: '0.3px',
   });
 
+  const liveRefreshLabel = getLiveRefreshLabel(liveRefresh, liveRefreshUnavailable);
+
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
-        <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: '#1a1a1a' }}>
-          Case Queue
-        </h1>
+        <div>
+          <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: '#1a1a1a' }}>
+            Case Queue
+          </h1>
+          {liveRefreshLabel ? (
+            <div style={{ color: '#999999', fontSize: '12px', marginTop: '4px' }}>
+              {liveRefreshLabel}
+            </div>
+          ) : null}
+        </div>
         <span style={{ color: '#999999', fontSize: '12px' }}>
           {cases.length} cases • sorted by rank score
         </span>

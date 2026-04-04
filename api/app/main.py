@@ -1,8 +1,13 @@
-"""FastAPI app exposing read-only Cue2Case API endpoints backed by PostgreSQL."""
+"""FastAPI app exposing Cue2Case API endpoints backed by PostgreSQL and live refresh hooks."""
 
 import json
 import os
+import subprocess
+import sys
 from datetime import datetime
+from pathlib import Path
+from threading import Lock
+from time import time
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -33,6 +38,7 @@ app.include_router(vessels_router)
 AVAILABLE_ROUTES = [
     "/",
     "/health",
+    "/live/refresh",
     "/cases",
     "/cases/{case_id}",
     "/cases/{case_id}/notes",
@@ -51,6 +57,19 @@ AVAILABLE_ROUTES = [
     "/port-context/criticality",
 ]
 
+LIVE_REFRESH_COOLDOWN_SECONDS = 120
+LIVE_REFRESH_TIMEOUT_SECONDS = 90
+LIVE_REFRESH_LOCK = Lock()
+LAST_LIVE_REFRESH_AT: Optional[float] = None
+
+
+def get_live_refresh_script_path() -> Path:
+    repo_root = Path(__file__).resolve().parents[2]
+    return repo_root / "scripts" / "live_refresh.py"
+
+
+def format_ran_at(timestamp: float) -> str:
+    return datetime.utcfromtimestamp(timestamp).isoformat(timespec="seconds") + "Z"
 
 
 def validate_external_cue_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -128,6 +147,56 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "cue2case-api"}
+
+
+@app.post("/live/refresh")
+async def trigger_live_refresh():
+    global LAST_LIVE_REFRESH_AT
+
+    script_path = get_live_refresh_script_path()
+    if not script_path.exists():
+        raise HTTPException(status_code=500, detail="Live refresh script not found")
+
+    now = time()
+    with LIVE_REFRESH_LOCK:
+        if LAST_LIVE_REFRESH_AT is not None:
+            elapsed = now - LAST_LIVE_REFRESH_AT
+            if elapsed < LIVE_REFRESH_COOLDOWN_SECONDS:
+                seconds_until_next = max(0, int(LIVE_REFRESH_COOLDOWN_SECONDS - elapsed))
+                return {
+                    "triggered": False,
+                    "cooldown_seconds": LIVE_REFRESH_COOLDOWN_SECONDS,
+                    "seconds_until_next": seconds_until_next,
+                    "message": "Live data cached; cooldown active",
+                    "ran_at": format_ran_at(LAST_LIVE_REFRESH_AT),
+                }
+
+        try:
+            subprocess.run(
+                [sys.executable, str(script_path)],
+                cwd=str(script_path.parent.parent),
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=LIVE_REFRESH_TIMEOUT_SECONDS,
+                env=os.environ.copy(),
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise HTTPException(status_code=500, detail="Live refresh timed out") from exc
+        except subprocess.CalledProcessError as exc:
+            stderr = (exc.stderr or "").strip()
+            stdout = (exc.stdout or "").strip()
+            detail = stderr or stdout or "Live refresh failed"
+            raise HTTPException(status_code=500, detail=f"Live refresh failed: {detail[:200]}") from exc
+
+        LAST_LIVE_REFRESH_AT = time()
+        return {
+            "triggered": True,
+            "cooldown_seconds": LIVE_REFRESH_COOLDOWN_SECONDS,
+            "seconds_until_next": LIVE_REFRESH_COOLDOWN_SECONDS,
+            "message": "Live refresh triggered",
+            "ran_at": format_ran_at(LAST_LIVE_REFRESH_AT),
+        }
 
 
 @app.get("/alerts")
