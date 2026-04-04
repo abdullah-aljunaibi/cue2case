@@ -438,10 +438,10 @@ def build_cases():
 
             cur.execute(
                 """
-                SELECT case_id, metadata->>'alert_type' AS alert_type
+                SELECT case_id, data->>'alert_type' AS alert_type
                 FROM case_evidence
                 WHERE case_id = ANY(%s::uuid[])
-                  AND metadata ? 'alert_type'
+                  AND data ? 'alert_type'
                 """,
                 (existing_case_ids,),
             )
