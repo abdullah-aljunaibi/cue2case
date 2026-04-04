@@ -12,9 +12,16 @@ import psycopg2
 from psycopg2.extras import execute_values
 
 ROOT = Path(__file__).resolve().parents[1]
-API_DIR = ROOT / "api"
-if str(API_DIR) not in sys.path:
-    sys.path.insert(0, str(API_DIR))
+API_PACKAGE_CANDIDATES = [
+    ROOT / "api" / "app",
+    Path("/app"),
+]
+for app_dir in API_PACKAGE_CANDIDATES:
+    if app_dir.is_dir():
+        api_parent = app_dir.parent
+        if str(api_parent) not in sys.path:
+            sys.path.insert(0, str(api_parent))
+        break
 
 from app.case_engine import build_cases
 from app.detectors.abnormal_approach import detect_abnormal_approach
