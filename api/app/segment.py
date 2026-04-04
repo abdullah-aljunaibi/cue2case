@@ -76,8 +76,17 @@ def build_segments(positions):
     return segments
 
 
+def has_valid_linestring_geometry(segment):
+    """Return True when a segment can form a valid non-degenerate LINESTRING."""
+    distinct_coords = {(point[1], point[2]) for point in segment}
+    return len(distinct_coords) >= 2
+
+
 def segment_to_row(mmsi, segment):
     """Convert a position segment into a track_segment insert tuple."""
+    if not has_valid_linestring_geometry(segment):
+        return None
+
     coords = ", ".join(f"{point[1]} {point[2]}" for point in segment)
     wkt = f"LINESTRING({coords})"
 
@@ -119,6 +128,7 @@ def run_segmentation():
 
         segments_to_insert = []
         vessel_count = 0
+        skipped_invalid_segments = 0
 
         for mmsi, group in groupby(rows, key=lambda row: row[0]):
             positions = [
@@ -126,7 +136,12 @@ def run_segmentation():
                 for row in group
             ]
             segments = build_segments(positions)
-            segments_to_insert.extend(segment_to_row(mmsi, segment) for segment in segments)
+            for segment in segments:
+                row = segment_to_row(mmsi, segment)
+                if row is None:
+                    skipped_invalid_segments += 1
+                    continue
+                segments_to_insert.append(row)
 
             vessel_count += 1
             if vessel_count % 50 == 0:
@@ -156,7 +171,8 @@ def run_segmentation():
             print(f"  Inserted batch {idx // BATCH_SIZE + 1}")
 
         print(
-            f"Done. {vessel_count} vessels → {len(segments_to_insert)} track segments."
+            f"Done. {vessel_count} vessels → {len(segments_to_insert)} track segments "
+            f"({skipped_invalid_segments} invalid segments skipped)."
         )
     finally:
         cur.close()
