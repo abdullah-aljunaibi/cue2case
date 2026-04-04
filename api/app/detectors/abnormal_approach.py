@@ -19,14 +19,14 @@ DATABASE_URL = os.environ.get(
     "postgresql://cue2case:cue2case_dev@localhost:5433/cue2case",
 )
 
-# Long Beach / San Pedro Bay inbound traffic from the Pacific typically heads
-# north to east as vessels come up from the south/southwest into the bay.
-EXPECTED_INBOUND_HEADING_RANGE = (0, 90)  # degrees, expected inbound approach band
+# Duqm port inbound traffic approaches from the open sea to the northwest,
+# heading roughly SE toward the port facilities.
+EXPECTED_INBOUND_HEADING_RANGE = (290, 350)  # degrees, expected inbound approach band
 COG_CHANGE_THRESHOLD = 60.0  # degrees change in 5 min while moving
 MIN_MOVING_SOG = 3.0  # knots
 MIN_HEADING_RANGE_SOG = 5.0  # knots
 TIME_WINDOW = timedelta(minutes=5)
-PORT_CENTER = (-118.25, 33.73)  # Long Beach approximate center
+PORT_CENTER = (57.68, 21.65)  # Duqm port approximate center
 
 
 def haversine_nm(lat1, lon1, lat2, lon2):

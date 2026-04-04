@@ -22,6 +22,7 @@ ALERT_WEIGHTS = {
     "identity_anomaly": 0.40,
     "kinematic_anomaly": 0.20,
     "abnormal_approach": 0.25,
+    "spoofing": 0.20,
     "ais_silence": 0.10,
     "loitering": 0.05,
 }
@@ -46,6 +47,11 @@ RECOMMENDATIONS = {
     "loitering": (
         "Check vessel purpose and authorization for extended anchorage. "
         "Verify whether the vessel is awaiting berth assignment or exhibiting suspicious behavior."
+    ),
+    "spoofing": (
+        "Investigate potential GPS manipulation or AIS spoofing. "
+        "Cross-reference position data with radar or satellite imagery. "
+        "Check for impossible speed jumps or position teleportation."
     ),
 }
 
@@ -95,6 +101,35 @@ def case_signature(mmsi, alert_types, start_observed_at):
         tuple(sorted(alert_types)),
         rounded_start.isoformat() if rounded_start is not None else None,
     )
+
+
+def build_recommendation(alert_counts, max_severity_by_type):
+    """Build a context-sensitive recommendation based on all alert types present."""
+    ordered_types = sorted(
+        alert_counts.keys(),
+        key=lambda t: (
+            -(max_severity_by_type.get(t, 0.0) * ALERT_WEIGHTS.get(t, 0.0)),
+            -alert_counts[t],
+            t,
+        ),
+    )
+    if len(ordered_types) <= 1:
+        return RECOMMENDATIONS.get(
+            ordered_types[0] if ordered_types else "",
+            DEFAULT_RECOMMENDATION,
+        )
+
+    parts = []
+    for alert_type in ordered_types:
+        rec = RECOMMENDATIONS.get(alert_type)
+        if rec:
+            parts.append(rec)
+
+    if not parts:
+        return DEFAULT_RECOMMENDATION
+
+    type_labels = ", ".join(t.replace("_", " ") for t in ordered_types)
+    return f"Multiple anomaly types detected ({type_labels}). " + " Additionally: ".join(parts[:3])
 
 
 def dominant_alert_type(max_severity_by_type, alert_counts):
@@ -368,9 +403,9 @@ def build_case_record(mmsi, incident_index, alerts_list, vessel_info):
         "assigned_to": None,
         "priority": priority_for_score(scores["anomaly_score"]),
         "summary": summary,
-        "recommended_action": RECOMMENDATIONS.get(
-            dominant_type,
-            DEFAULT_RECOMMENDATION,
+        "recommended_action": build_recommendation(
+            scores["alert_counts"],
+            scores["max_severity_by_type"],
         ),
         "evidence_rows": evidence_rows,
         "incident_start": incident_start,
