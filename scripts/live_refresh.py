@@ -12,13 +12,12 @@ import psycopg2
 from psycopg2.extras import execute_values
 
 ROOT = Path(__file__).resolve().parents[1]
-API_PACKAGE_CANDIDATES = [
-    ROOT / "api" / "app",
+API_PARENT_CANDIDATES = [
+    ROOT / "api",
     Path("/app"),
 ]
-for app_dir in API_PACKAGE_CANDIDATES:
-    if app_dir.is_dir():
-        api_parent = app_dir.parent
+for api_parent in API_PARENT_CANDIDATES:
+    if (api_parent / "app" / "__init__.py").is_file():
         if str(api_parent) not in sys.path:
             sys.path.insert(0, str(api_parent))
         break
