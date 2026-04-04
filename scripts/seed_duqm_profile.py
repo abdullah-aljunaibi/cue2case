@@ -29,7 +29,7 @@ def main() -> None:
     database_url = os.getenv("DATABASE_URL_SYNC", DEFAULT_DATABASE_URL)
 
     # Approximate demo geometry from public materials for Port of Duqm / SEZAD references.
-    port_center = (57.680000, 21.650000)
+    port_center = (57.710000, 19.670000)
 
     operational_zones = [
         {

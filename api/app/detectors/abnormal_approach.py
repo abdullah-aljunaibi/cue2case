@@ -26,7 +26,7 @@ COG_CHANGE_THRESHOLD = 60.0  # degrees change in 5 min while moving
 MIN_MOVING_SOG = 3.0  # knots
 MIN_HEADING_RANGE_SOG = 5.0  # knots
 TIME_WINDOW = timedelta(minutes=5)
-PORT_CENTER = (57.68, 21.65)  # Duqm port approximate center
+PORT_CENTER = (57.71, 19.67)  # Duqm port approximate center (Ras Markaz area)
 
 
 def haversine_nm(lat1, lon1, lat2, lon2):
