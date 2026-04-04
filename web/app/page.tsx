@@ -32,7 +32,7 @@ type LiveRefreshResult = {
 };
 
 function getSeverity(rank: number | null | undefined): { label: string; color: string; bg: string } {
-  const r = rank ?? 0;
+  const r = Math.round((rank ?? 0) * 10000) / 10000;
   if (r >= 1.4) return { label: 'CRITICAL', color: '#991b1b', bg: '#fef2f2' };
   if (r >= 1.0) return { label: 'HIGH', color: '#92400e', bg: '#fef3c7' };
   if (r >= 0.6) return { label: 'MEDIUM', color: '#92400e', bg: '#fef3c7' };

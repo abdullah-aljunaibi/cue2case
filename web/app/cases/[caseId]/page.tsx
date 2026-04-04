@@ -126,6 +126,20 @@ type LeafletMap = {
   remove: () => void;
 };
 
+function getSeverityLabel(priority?: number | string | null, rankScore?: number | null): string {
+  if (rankScore != null) {
+    const r = Math.round(rankScore * 10000) / 10000;
+    if (r >= 1.4) return 'CRITICAL';
+    if (r >= 1.0) return 'HIGH';
+    if (r >= 0.6) return 'MEDIUM';
+    return 'LOW';
+  }
+  const p = Number(priority);
+  if (p >= 3) return 'HIGH';
+  if (p >= 2) return 'MEDIUM';
+  return 'LOW';
+}
+
 function formatText(value?: string | number | null) {
   if (value === null || value === undefined) {
     return '—';
@@ -600,7 +614,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
             </div>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
               <Badge label={`Status ${formatText(caseData?.status)}`} color={COLORS.blue} />
-              <Badge label={`Severity ${formatText(caseData?.severity || caseData?.priority)}`} color={COLORS.red} />
+              <Badge label={`Severity ${getSeverityLabel(caseData?.priority, score.rank_score)}`} color={COLORS.red} />
               <Badge label={`Evidence ${evidence.length}`} color={COLORS.green} />
               <Badge label={`Replay ${events.length}`} color={COLORS.purple} />
             </div>
@@ -805,7 +819,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                 </SectionCard>
               </div>
 
-              <div style={{ display: 'grid', gap: '16px' }}>
+              <div style={{ display: 'grid', gap: '16px', position: 'sticky', top: '20px', alignSelf: 'start' }}>
                 <SectionCard title="Operator actions">
                   <div style={{ display: 'grid', gap: '14px' }}>
                     <div style={{ display: 'grid', gap: '8px' }}>
