@@ -19,7 +19,7 @@ const COLORS = {
   blue: '#D94436',
   red: '#D94436',
   yellow: '#999999',
-  green: '#999999',
+  green: '#2f855a',
   purple: '#D94436',
 };
 
@@ -202,6 +202,32 @@ function detailText(value: unknown) {
   }
 }
 
+function summarizeDetail(value: unknown) {
+  if (value === null || value === undefined) {
+    return 'No detail payload';
+  }
+
+  if (typeof value === 'string') {
+    const compact = value.replace(/\s+/g, ' ').trim();
+    return compact.length > 140 ? `${compact.slice(0, 140)}…` : compact;
+  }
+
+  if (Array.isArray(value)) {
+    return `${value.length} item${value.length === 1 ? '' : 's'}`;
+  }
+
+  if (typeof value === 'object') {
+    const keys = Object.keys(value as Record<string, unknown>);
+    if (!keys.length) {
+      return 'Empty object';
+    }
+
+    return keys.slice(0, 4).join(' · ') + (keys.length > 4 ? ` +${keys.length - 4} more` : '');
+  }
+
+  return String(value);
+}
+
 function extractCoordinates(primaryGeom: unknown): [number, number] | null {
   if (!primaryGeom || typeof primaryGeom !== 'object') {
     return null;
@@ -298,11 +324,9 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
       setActionState({ loading: false, message: '', error: false });
       setNoteState({ loading: false, message: '', error: false });
 
-      // Core case data — must succeed
       const casePayload = await fetchJson<CasePayload>(`${API}/cases/${encodeURIComponent(caseId)}`);
       setCaseData(casePayload);
 
-      // Non-critical data — fetch independently so failures don't block the page
       const [replayPayload, notesPayload, auditPayload] = await Promise.all([
         fetchJson<ReplayPayload>(`${API}/cases/${encodeURIComponent(caseId)}/replay`).catch(() => null),
         fetchJson<NoteItem[] | { notes?: NoteItem[] }>(`${API}/cases/${encodeURIComponent(caseId)}/notes`).catch(() => null),
@@ -723,23 +747,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                                 <Badge label={formatText(event.event_type)} color={color} />
                               </div>
                               <div style={{ marginBottom: '6px' }}>{formatText(event.narrative)}</div>
-                              {event.data ? (
-                                <pre
-                                  style={{
-                                    margin: 0,
-                                    whiteSpace: 'pre-wrap',
-                                    wordBreak: 'break-word',
-                                    padding: '10px',
-                                    borderRadius: '8px',
-                                    background: '#ffffff',
-                                    border: `1px solid ${COLORS.border}`,
-                                    color: COLORS.muted,
-                                    fontSize: '12px',
-                                  }}
-                                >
-                                  {detailText(event.data)}
-                                </pre>
-                              ) : null}
+                              {event.data ? <DetailBlock label="Event details" summary={summarizeDetail(event.data)} value={event.data} /> : null}
                             </div>
                           </div>
                         );
@@ -787,23 +795,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                           <div style={{ color: COLORS.muted }}>
                             Ref {formatText(item.evidence_ref)} · Source {formatText(item.provenance)}
                           </div>
-                          {item.data ? (
-                            <pre
-                              style={{
-                                margin: 0,
-                                whiteSpace: 'pre-wrap',
-                                wordBreak: 'break-word',
-                                padding: '10px',
-                                borderRadius: '8px',
-                                background: COLORS.bg,
-                                border: `1px solid ${COLORS.border}`,
-                                color: COLORS.text,
-                                fontSize: '12px',
-                              }}
-                            >
-                              {detailText(item.data)}
-                            </pre>
-                          ) : null}
+                          {item.data ? <DetailBlock label="Evidence payload" summary={summarizeDetail(item.data)} value={item.data} /> : null}
                         </div>
                       ))
                     ) : (
@@ -815,28 +807,50 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
 
               <div style={{ display: 'grid', gap: '16px' }}>
                 <SectionCard title="Operator actions">
-                  <div style={{ display: 'grid', gap: '10px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px' }}>
+                  <div style={{ display: 'grid', gap: '14px' }}>
+                    <div style={{ display: 'grid', gap: '8px' }}>
+                      <div style={{ color: COLORS.muted, textTransform: 'uppercase', letterSpacing: '0.12em', fontSize: '11px' }}>
+                        Primary action
+                      </div>
                       <button
                         type="button"
                         onClick={() => void runAction('acknowledge')}
-                        style={{ ...buttonStyle('primary'), backgroundColor: '#D94436' }}
+                        style={{ ...buttonStyle('primary'), width: '100%', justifyContent: 'center' }}
                         disabled={actionState.loading}
                       >
-                        Acknowledge
-                      </button>
-                      <button type="button" onClick={() => void runAction('assign')} style={buttonStyle('primary')} disabled={actionState.loading}>
-                        Assign to me
-                      </button>
-                      <button type="button" onClick={() => void runAction('escalate')} style={buttonStyle('danger')} disabled={actionState.loading}>
-                        Escalate
-                      </button>
-                      <button type="button" onClick={() => void runAction('export_brief')} style={buttonStyle('secondary')} disabled={actionState.loading}>
-                        Export brief
+                        Acknowledge case
                       </button>
                     </div>
 
-                    <div style={{ display: 'grid', gap: '8px', marginTop: '4px' }}>
+                    <div style={{ display: 'grid', gap: '8px' }}>
+                      <div style={{ color: COLORS.muted, textTransform: 'uppercase', letterSpacing: '0.12em', fontSize: '11px' }}>
+                        Secondary actions
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px' }}>
+                        <button type="button" onClick={() => void runAction('assign')} style={buttonStyle('secondary')} disabled={actionState.loading}>
+                          Assign to me
+                        </button>
+                        <button type="button" onClick={() => void runAction('export_brief')} style={buttonStyle('secondary')} disabled={actionState.loading}>
+                          Export brief
+                        </button>
+                        <button type="button" onClick={() => void runAction('escalate')} style={buttonStyle('secondary')} disabled={actionState.loading}>
+                          Escalate
+                        </button>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'grid',
+                        gap: '8px',
+                        marginTop: '2px',
+                        paddingTop: '12px',
+                        borderTop: `1px dashed ${COLORS.border}`,
+                      }}
+                    >
+                      <div style={{ color: COLORS.red, textTransform: 'uppercase', letterSpacing: '0.12em', fontSize: '11px' }}>
+                        Destructive
+                      </div>
                       <label style={{ color: COLORS.muted }}>Dismiss reason</label>
                       <input
                         value={dismissReason}
@@ -845,7 +859,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                         style={inputStyle}
                       />
                       <button type="button" onClick={() => void runAction('dismiss')} style={buttonStyle('danger')} disabled={actionState.loading}>
-                        Dismiss
+                        Dismiss case
                       </button>
                     </div>
 
@@ -854,9 +868,9 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                         style={{
                           padding: '10px 12px',
                           borderRadius: '10px',
-                          border: `1px solid ${actionState.error ? 'rgba(217,68,54,0.4)' : 'rgba(160,160,160,0.4)'}`,
-                          background: actionState.error ? 'rgba(217,68,54,0.08)' : 'rgba(160,160,160,0.08)',
-                          color: actionState.error ? '#D94436' : '#666666',
+                          border: `1px solid ${actionState.error ? 'rgba(217,68,54,0.4)' : 'rgba(47,133,90,0.35)'}`,
+                          background: actionState.error ? 'rgba(217,68,54,0.08)' : 'rgba(47,133,90,0.08)',
+                          color: actionState.error ? '#D94436' : '#2f855a',
                         }}
                       >
                         {actionState.loading ? 'Working… ' : ''}
@@ -900,7 +914,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                     <button
                       type="button"
                       onClick={() => void submitNote()}
-                      style={{ ...buttonStyle('primary'), backgroundColor: '#D94436' }}
+                      style={{ ...buttonStyle('primary'), justifyContent: 'center' }}
                       disabled={noteState.loading}
                     >
                       Submit note
@@ -1040,13 +1054,54 @@ function Badge({ label, color }: { label: string; color: string }) {
   );
 }
 
+function DetailBlock({ label, summary, value }: { label: string; summary: string; value: unknown }) {
+  return (
+    <details
+      style={{
+        border: `1px solid ${COLORS.border}`,
+        borderRadius: '10px',
+        background: '#fcfcfc',
+      }}
+    >
+      <summary
+        style={{
+          cursor: 'pointer',
+          listStyle: 'none',
+          padding: '10px 12px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          gap: '12px',
+          flexWrap: 'wrap',
+        }}
+      >
+        <span style={{ color: COLORS.text, fontWeight: 700 }}>{label}</span>
+        <span style={{ color: COLORS.muted, fontSize: '12px' }}>{summary}</span>
+      </summary>
+      <pre
+        style={{
+          margin: 0,
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+          padding: '0 12px 12px',
+          color: COLORS.muted,
+          fontSize: '12px',
+          maxHeight: '320px',
+          overflow: 'auto',
+        }}
+      >
+        {detailText(value)}
+      </pre>
+    </details>
+  );
+}
+
 function buttonStyle(kind: 'primary' | 'secondary' | 'danger'): React.CSSProperties {
   const palette =
     kind === 'danger'
-      ? { border: COLORS.red, text: '#D94436', background: 'transparent' }
+      ? { border: COLORS.red, text: '#D94436', background: '#fff5f5' }
       : kind === 'secondary'
-        ? { border: COLORS.purple, text: '#1a1a1a', background: 'transparent' }
-        : { border: COLORS.blue, text: '#D94436', background: 'transparent' };
+        ? { border: COLORS.border, text: '#666666', background: '#ffffff' }
+        : { border: COLORS.blue, text: '#ffffff', background: '#D94436' };
 
   return {
     padding: '10px 12px',
@@ -1057,6 +1112,8 @@ function buttonStyle(kind: 'primary' | 'secondary' | 'danger'): React.CSSPropert
     cursor: 'pointer',
     fontSize: '12px',
     fontWeight: 700,
+    display: 'inline-flex',
+    alignItems: 'center',
   };
 }
 

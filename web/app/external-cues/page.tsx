@@ -72,6 +72,28 @@ function formatJson(value: unknown) {
   }
 }
 
+function summarizePayload(value: unknown) {
+  if (value === null || value === undefined) {
+    return 'No payload';
+  }
+
+  if (typeof value === 'string') {
+    const compact = value.replace(/\s+/g, ' ').trim();
+    return compact.length > 140 ? `${compact.slice(0, 140)}…` : compact;
+  }
+
+  if (Array.isArray(value)) {
+    return `${value.length} item${value.length === 1 ? '' : 's'}`;
+  }
+
+  if (typeof value === 'object') {
+    const keys = Object.keys(value as Record<string, unknown>);
+    return keys.length ? keys.slice(0, 4).join(' · ') + (keys.length > 4 ? ` +${keys.length - 4}` : '') : 'Empty object';
+  }
+
+  return String(value);
+}
+
 function hasRawPayload(value: unknown) {
   return value !== undefined && value !== null;
 }
@@ -138,7 +160,6 @@ export default async function ExternalCuesPage() {
             backgroundColor: '#ffffff',
             border: '1px solid #e0e0e0',
             borderRadius: '8px',
-            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.08)',
           }}
         >
           <Link
@@ -170,7 +191,6 @@ export default async function ExternalCuesPage() {
               border: '1px solid #D94436',
               borderRadius: '6px',
               color: '#999999',
-              boxShadow: '0 4px 12px rgba(159, 18, 57, 0.08)',
             }}
           >
             <div style={{ fontWeight: 700, marginBottom: '0.35rem' }}>
@@ -203,7 +223,6 @@ export default async function ExternalCuesPage() {
                 border: '1px solid #e0e0e0',
                 borderRadius: '6px',
                 padding: '1rem 1.25rem',
-                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.08)',
               }}
             >
               <div style={{ fontSize: '0.85rem', color: '#999999', marginBottom: '0.35rem' }}>
@@ -244,7 +263,6 @@ export default async function ExternalCuesPage() {
                     border: '1px solid #e0e0e0',
                     borderRadius: '8px',
                     padding: '1.25rem',
-                    boxShadow: '0 10px 30px rgba(0, 0, 0, 0.08)',
                   }}
                 >
                   <div
@@ -338,25 +356,34 @@ export default async function ExternalCuesPage() {
                   </div>
 
                   {hasRawPayload(item.data) ? (
-                    <div>
-                      <div
+                    <details
+                      style={{
+                        border: '1px solid #e0e0e0',
+                        borderRadius: '12px',
+                        background: '#fcfcfc',
+                      }}
+                    >
+                      <summary
                         style={{
-                          fontSize: '0.8rem',
-                          color: '#999999',
-                          marginBottom: '0.35rem',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.04em',
+                          cursor: 'pointer',
+                          padding: '0.85rem',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          gap: '0.75rem',
+                          flexWrap: 'wrap',
+                          color: '#1a1a1a',
+                          fontWeight: 700,
                         }}
                       >
-                        Source payload
-                      </div>
+                        <span>Source payload</span>
+                        <span style={{ color: '#999999', fontSize: '0.8rem', fontWeight: 500 }}>
+                          {summarizePayload(item.data)}
+                        </span>
+                      </summary>
                       <pre
                         style={{
                           margin: 0,
-                          padding: '0.85rem',
-                          borderRadius: '12px',
-                          border: '1px solid #e0e0e0',
-                          backgroundColor: 'transparent',
+                          padding: '0 0.85rem 0.85rem',
                           color: '#999999',
                           fontSize: '0.78rem',
                           lineHeight: 1.45,
@@ -367,7 +394,7 @@ export default async function ExternalCuesPage() {
                       >
                         {formatJson(item.data)}
                       </pre>
-                    </div>
+                    </details>
                   ) : null}
                 </article>
               );

@@ -57,6 +57,15 @@ function formatPercent(value?: number | null) {
   return `${value.toFixed(1)}%`;
 }
 
+function formatConfidence(value?: number | null) {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return '—';
+  }
+
+  const normalized = value <= 1 ? value * 100 : value;
+  return `${normalized.toFixed(1)}%`;
+}
+
 function formatText(value?: string | number | null) {
   if (value === null || value === undefined) {
     return '—';
@@ -186,7 +195,44 @@ export default async function DashboardPage() {
         >
           {[
             { label: 'Total Cases', value: formatNumber(stats?.total_cases) },
-            { label: 'Open', value: formatNumber(openCases) },
+            { label: 'Total Alerts', value: formatNumber(stats?.total_alerts) },
+            { label: 'Total Vessels', value: formatNumber(stats?.total_vessels) },
+            { label: 'Avg Confidence', value: formatConfidence(stats?.avg_confidence) },
+          ].map((item) => (
+            <div
+              key={item.label}
+              style={{
+                background: COLORS.panel,
+                border: `1px solid ${COLORS.border}`,
+                borderRadius: '12px',
+                padding: '16px',
+              }}
+            >
+              <div
+                style={{
+                  color: COLORS.tertiary,
+                  fontSize: '11px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                  marginBottom: '8px',
+                }}
+              >
+                {item.label}
+              </div>
+              <div style={{ color: COLORS.text, fontSize: '28px', fontWeight: 700 }}>{item.value}</div>
+            </div>
+          ))}
+        </section>
+
+        <section
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: '12px',
+          }}
+        >
+          {[
+            { label: 'Open Cases', value: formatNumber(openCases) },
             { label: 'Escalated', value: formatNumber(escalatedCases) },
             { label: 'FP Rate', value: formatPercent(stats?.false_positive_rate) },
           ].map((item) => (
@@ -210,7 +256,7 @@ export default async function DashboardPage() {
               >
                 {item.label}
               </div>
-              <div style={{ color: COLORS.text, fontSize: '28px', fontWeight: 700 }}>{item.value}</div>
+              <div style={{ color: COLORS.text, fontSize: '24px', fontWeight: 700 }}>{item.value}</div>
             </div>
           ))}
         </section>
@@ -356,7 +402,30 @@ export default async function DashboardPage() {
               </div>
               {topVessels.map((vessel, index) => {
                 const mmsi = vessel.mmsi !== null && vessel.mmsi !== undefined ? String(vessel.mmsi) : '';
-                return (
+                const vesselLabel = formatText(vessel.vessel_name || 'Unknown vessel');
+                return mmsi ? (
+                  <Link
+                    key={`${mmsi || 'unknown'}-${index}`}
+                    href={`/vessels/${mmsi}`}
+                    style={{ textDecoration: 'none', color: 'inherit' }}
+                  >
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '80px 160px 1fr 140px',
+                        gap: '10px',
+                        padding: '12px',
+                        borderBottom: `1px solid ${COLORS.border}`,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <span style={{ color: COLORS.secondary }}>{index + 1}</span>
+                      <span style={{ color: COLORS.accent, fontWeight: 700 }}>{mmsi}</span>
+                      <span style={{ color: COLORS.text, fontWeight: 700 }}>{vesselLabel}</span>
+                      <span style={{ color: COLORS.secondary }}>{formatNumber(vessel.alert_count)}</span>
+                    </div>
+                  </Link>
+                ) : (
                   <div
                     key={`${mmsi || 'unknown'}-${index}`}
                     style={{
@@ -369,14 +438,8 @@ export default async function DashboardPage() {
                     }}
                   >
                     <span style={{ color: COLORS.secondary }}>{index + 1}</span>
-                    {mmsi ? (
-                      <Link href={`/vessels/${mmsi}`} style={{ color: COLORS.accent, textDecoration: 'none', fontWeight: 700 }}>
-                        {mmsi}
-                      </Link>
-                    ) : (
-                      <span style={{ color: COLORS.secondary }}>—</span>
-                    )}
-                    <span style={{ color: COLORS.text, fontWeight: 700 }}>{formatText(vessel.vessel_name || 'Unknown vessel')}</span>
+                    <span style={{ color: COLORS.secondary }}>—</span>
+                    <span style={{ color: COLORS.text, fontWeight: 700 }}>{vesselLabel}</span>
                     <span style={{ color: COLORS.secondary }}>{formatNumber(vessel.alert_count)}</span>
                   </div>
                 );

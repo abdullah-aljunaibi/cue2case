@@ -110,6 +110,40 @@ function formatScore(value?: number | null) {
   return value.toFixed(3);
 }
 
+function formatJson(value: unknown) {
+  if (value === undefined || value === null) {
+    return '{}';
+  }
+
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return '{"error":"Unable to render JSON"}';
+  }
+}
+
+function summarizePayload(value: unknown) {
+  if (value === null || value === undefined) {
+    return 'No payload';
+  }
+
+  if (typeof value === 'string') {
+    const compact = value.replace(/\s+/g, ' ').trim();
+    return compact.length > 140 ? `${compact.slice(0, 140)}…` : compact;
+  }
+
+  if (Array.isArray(value)) {
+    return `${value.length} item${value.length === 1 ? '' : 's'}`;
+  }
+
+  if (typeof value === 'object') {
+    const keys = Object.keys(value as Record<string, unknown>);
+    return keys.length ? keys.slice(0, 4).join(' · ') + (keys.length > 4 ? ` +${keys.length - 4}` : '') : 'Empty object';
+  }
+
+  return String(value);
+}
+
 function labelize(value?: string | null) {
   if (!value) {
     return 'Unknown';
@@ -189,7 +223,7 @@ export default async function VesselDetailPage({ params }: { params: Promise<{ m
     const bTime = getAlertTimestamp(b);
     const aValue = aTime ? new Date(aTime).getTime() : 0;
     const bValue = bTime ? new Date(bTime).getTime() : 0;
-    return aValue - bValue;
+    return bValue - aValue;
   });
 
   const alertTypeCounts = sortedAlerts.reduce<Record<string, number>>((acc, alert) => {
@@ -366,7 +400,7 @@ export default async function VesselDetailPage({ params }: { params: Promise<{ m
             <section
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'minmax(0, 2fr) minmax(320px, 1fr)',
+                gridTemplateColumns: 'minmax(0, 1.6fr) minmax(280px, 1fr)',
                 gap: '16px',
                 alignItems: 'start',
               }}
@@ -386,11 +420,11 @@ export default async function VesselDetailPage({ params }: { params: Promise<{ m
                 </div>
 
                 {cases.length ? (
-                  <div style={{ minWidth: '760px' }}>
+                  <div style={{ minWidth: '640px' }}>
                     <div
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: '110px 1.8fr 120px 120px 120px 150px',
+                        gridTemplateColumns: '90px minmax(180px, 1.8fr) 110px 100px 100px 130px',
                         gap: '10px',
                         padding: '10px 12px',
                         borderBottom: `1px solid ${COLORS.border}`,
@@ -418,7 +452,7 @@ export default async function VesselDetailPage({ params }: { params: Promise<{ m
                           <div
                             style={{
                               display: 'grid',
-                              gridTemplateColumns: '110px 1.8fr 120px 120px 120px 150px',
+                              gridTemplateColumns: '90px minmax(180px, 1.8fr) 110px 100px 100px 130px',
                               gap: '10px',
                               padding: '12px',
                               borderBottom: `1px solid ${COLORS.border}`,
@@ -439,7 +473,7 @@ export default async function VesselDetailPage({ params }: { params: Promise<{ m
                           key={String(caseId)}
                           style={{
                             display: 'grid',
-                            gridTemplateColumns: '110px 1.8fr 120px 120px 120px 150px',
+                            gridTemplateColumns: '90px minmax(180px, 1.8fr) 110px 100px 100px 130px',
                             gap: '10px',
                             padding: '12px',
                             borderBottom: `1px solid ${COLORS.border}`,
@@ -538,7 +572,7 @@ export default async function VesselDetailPage({ params }: { params: Promise<{ m
                           border: `1px solid ${COLORS.border}`,
                           background: COLORS.bg,
                           display: 'grid',
-                          gap: '6px',
+                          gap: '8px',
                         }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
@@ -547,7 +581,44 @@ export default async function VesselDetailPage({ params }: { params: Promise<{ m
                           </span>
                           <span style={{ color: COLORS.secondary, fontSize: '12px' }}>{formatText(cue.source)}</span>
                         </div>
-                        <div style={{ color: COLORS.text, fontSize: '13px', lineHeight: 1.5 }}>{formatText(cue.data ? JSON.stringify(cue.data) : null)}</div>
+                        <details
+                          style={{
+                            border: `1px solid ${COLORS.border}`,
+                            borderRadius: '10px',
+                            background: '#ffffff',
+                          }}
+                        >
+                          <summary
+                            style={{
+                              cursor: 'pointer',
+                              padding: '10px 12px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              gap: '10px',
+                              flexWrap: 'wrap',
+                              fontWeight: 700,
+                            }}
+                          >
+                            <span style={{ color: COLORS.text }}>Cue payload</span>
+                            <span style={{ color: COLORS.secondary, fontSize: '12px', fontWeight: 500 }}>
+                              {summarizePayload(cue.data)}
+                            </span>
+                          </summary>
+                          <pre
+                            style={{
+                              margin: 0,
+                              padding: '0 12px 12px',
+                              whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-word',
+                              color: COLORS.secondary,
+                              fontSize: '12px',
+                              maxHeight: '260px',
+                              overflow: 'auto',
+                            }}
+                          >
+                            {formatJson(cue.data)}
+                          </pre>
+                        </details>
                       </div>
                     ))
                   ) : (
