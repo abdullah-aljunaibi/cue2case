@@ -63,9 +63,19 @@ LIVE_REFRESH_LOCK = Lock()
 LAST_LIVE_REFRESH_AT: Optional[float] = None
 
 
-def get_live_refresh_script_path() -> Path:
-    repo_root = Path(__file__).resolve().parents[2]
-    return repo_root / "scripts" / "live_refresh.py"
+def find_live_refresh_script() -> tuple[Optional[Path], List[str]]:
+    current_file = Path(__file__).resolve()
+    checked_paths: List[str] = []
+
+    for base_dir in [current_file.parent, *current_file.parents]:
+        candidate = (base_dir / "scripts" / "live_refresh.py").resolve()
+        candidate_str = str(candidate)
+        if candidate_str not in checked_paths:
+            checked_paths.append(candidate_str)
+        if candidate.is_file():
+            return candidate, checked_paths
+
+    return None, checked_paths
 
 
 def format_ran_at(timestamp: float) -> str:
@@ -153,9 +163,15 @@ async def health():
 async def trigger_live_refresh():
     global LAST_LIVE_REFRESH_AT
 
-    script_path = get_live_refresh_script_path()
-    if not script_path.exists():
-        raise HTTPException(status_code=500, detail="Live refresh script not found")
+    script_path, checked_paths = find_live_refresh_script()
+    if script_path is None:
+        checked_summary = "; ".join(checked_paths[:6])
+        if len(checked_paths) > 6:
+            checked_summary += "; ..."
+        raise HTTPException(
+            status_code=500,
+            detail=f"Live refresh script not found. Checked: {checked_summary}",
+        )
 
     now = time()
     with LIVE_REFRESH_LOCK:
