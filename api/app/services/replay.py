@@ -12,7 +12,7 @@ from uuid import UUID
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-from api.app.db import get_database_url
+from app.db import get_database_url
 
 DATABASE_URL = get_database_url()
 

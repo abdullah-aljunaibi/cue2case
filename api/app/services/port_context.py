@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 import psycopg2
 from psycopg2.extras import Json, RealDictCursor
 
-from api.app.db import get_database_url
+from app.db import get_database_url
 
 DATABASE_URL = get_database_url()
 
